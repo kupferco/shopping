@@ -1,34 +1,61 @@
-import React, { useRef, useState } from 'react';
-import GoogleSpeechStreamer, { GoogleSpeechStreamerHandle } from './src/GoogleSpeechStreamer';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 
 const App: React.FC = () => {
-    const [transcript, setTranscript] = useState('');
-    const speechStreamerRef = useRef<GoogleSpeechStreamerHandle>(null);
+  const [transcript, setTranscript] = useState('');
+  const [isMuted, setIsMuted] = useState(false);
 
-    const handleTranscript = (text: string, isFinal: boolean) => {
-        setTranscript((prev) => (isFinal ? `${prev} ${text}` : prev));
-    };
+  const streamControls = useRef<{
+    start: () => void;
+    stop: () => void;
+    toggleMute: () => void;
+    isMuted: () => boolean;
+  } | null>(null);
 
-    const handleStart = () => {
-        speechStreamerRef.current?.start();
-    };
 
-    const handleStop = () => {
-        speechStreamerRef.current?.stop();
-    };
+  useEffect(() => {
+    console.log(isMuted);
+  }, [isMuted]);
 
-    return (
-        <div>
-            <h1>Speech Recognition</h1>
-            <GoogleSpeechStreamer ref={speechStreamerRef} onTranscript={handleTranscript} />
-            <button onClick={handleStart}>Start</button>
-            <button onClick={handleStop}>Stop</button>
-            <div>
-                <h2>Transcript:</h2>
-                <p>{transcript}</p>
-            </div>
-        </div>
-    );
+  const handleReady = useCallback((controls: typeof streamControls.current) => {
+    streamControls.current = controls;
+  }, []);
+
+
+  const handleTranscript = useCallback((newTranscript: string, isFinal: boolean) => {
+    if (isFinal) {
+      setTranscript((prev) => `${prev} ${newTranscript}`);
+    }
+  }, []);
+
+  const handleMute = () => {
+    if (streamControls.current) {
+      streamControls.current.toggleMute();
+      setIsMuted(streamControls.current.isMuted());
+    } else {
+      console.error('streamControls is not initialized');
+    }
+  };
+
+
+  const handleMuteChange = (muted: boolean) => {
+    setIsMuted(muted);
+  };
+
+  return (
+    <div>
+      <h1>Speech to Text</h1>
+      <p>Transcript: {transcript}</p>
+      <button onClick={() => streamControls.current?.start()}>Start</button>
+      <button onClick={() => streamControls.current?.stop()}>Stop</button>
+      <button onClick={handleMute}>{isMuted ? 'Unmute' : 'Mute'}</button>
+      <GoogleSpeechStream
+        onTranscript={handleTranscript}
+        onReady={handleReady}
+        onMuteChange={handleMuteChange} // Pass this prop
+      />
+    </div>
+  );
 };
 
 export default App;

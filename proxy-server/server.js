@@ -54,9 +54,8 @@ const startStreaming = (socket) => {
 
 // Function to start FFmpeg decoding
 const startFFmpeg = (recognizeStream) => {
-    console.log('Starting FFmpeg decoding...');
+    console.log('Initializing FFmpeg process...');
 
-    // Spawn an FFmpeg process to decode Opus to PCM
     const ffmpeg = spawn('ffmpeg', [
         '-i', 'pipe:0',         // Input from stdin
         '-f', 's16le',          // Output raw PCM
@@ -66,21 +65,19 @@ const startFFmpeg = (recognizeStream) => {
         'pipe:1',               // Output to stdout
     ]);
 
-    // ffmpeg.stderr.on('data', (data) => console.error(`FFmpeg error: ${data}`));
-
     ffmpeg.on('close', (code) => {
         console.log(`FFmpeg process exited with code ${code}`);
         recognizeStream.end(); // End Google streaming when FFmpeg stops
     });
 
-    // Pipe FFmpeg output to the Google Speech API
     ffmpeg.stdout.on('data', (pcmData) => {
-        // console.log('Decoded PCM data length:', pcmData.length);
         recognizeStream.write(pcmData);
     });
 
+    console.log('FFmpeg process started');
     return ffmpeg;
 };
+
 
 // Handle WebSocket connections
 wss.on('connection', (socket) => {
@@ -88,28 +85,64 @@ wss.on('connection', (socket) => {
     let ffmpegProcess = null;
     let recognizeStream = null;
 
-    socket.on('message', (chunk) => {
-        if (!recognizeStream) {
-            recognizeStream = startStreaming(socket); // Start Google Speech streaming
-            ffmpegProcess = startFFmpeg(recognizeStream); // Start FFmpeg decoding
-        }
-
-        try {
-            // Write Opus audio chunk to FFmpeg
-            ffmpegProcess.stdin.write(chunk);
-        } catch (error) {
-            console.error('Error piping to FFmpeg:', error);
-        }
-    });
-
-    socket.on('close', () => {
-        console.log('Client disconnected');
+    const stopStreaming = () => {
         if (ffmpegProcess) {
             ffmpegProcess.stdin.end();
+            ffmpegProcess.kill(); // Ensure FFmpeg process is terminated
+            ffmpegProcess = null;
         }
         if (recognizeStream) {
             recognizeStream.end();
+            recognizeStream = null;
         }
+        console.log('Stopped streaming to Google Speech API');
+    };
+    
+    const startStreamingToGoogle = () => {
+        if (!recognizeStream) {
+            console.log('Starting Google Speech streaming...');
+            recognizeStream = startStreaming(socket); // Start Google Speech streaming
+            ffmpegProcess = startFFmpeg(recognizeStream); // Start FFmpeg decoding
+            console.log('Resumed streaming to Google Speech API');
+        } else {
+            console.log('Streaming is already running');
+        }
+    };
+    
+    
+
+    socket.on('message', (message) => {
+        // console.log(message);
+        try {
+            // Attempt to parse the message as JSON
+            const parsedMessage = JSON.parse(message);
+
+            if (parsedMessage.action === 'stop') {
+                console.log('Stop action received');
+                stopStreaming();
+            } else if (parsedMessage.action === 'start') {
+                console.log('Start action received');
+                startStreamingToGoogle();
+            }
+        } catch (error) {
+            // If JSON parsing fails, treat it as raw audio data
+            if (ffmpegProcess) {
+                try {
+                    ffmpegProcess.stdin.write(message);
+                } catch (ffmpegError) {
+                    console.error('Error piping to FFmpeg:', ffmpegError);
+                }
+            } else {
+                console.error('Received raw audio data, but FFmpeg is not running');
+            }
+        }
+    });
+
+
+
+    socket.on('close', () => {
+        console.log('Client disconnected');
+        stopStreaming();
     });
 });
 
