@@ -1,20 +1,34 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import GoogleSpeechStreamer, { GoogleSpeechStreamerHandle } from './src/GoogleSpeechStreamer';
 
-export default function App() {
-  return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
-  );
-}
+const App: React.FC = () => {
+    const [transcript, setTranscript] = useState('');
+    const speechStreamerRef = useRef<GoogleSpeechStreamerHandle>(null);
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+    const handleTranscript = (text: string, isFinal: boolean) => {
+        setTranscript((prev) => (isFinal ? `${prev} ${text}` : prev));
+    };
+
+    const handleStart = () => {
+        speechStreamerRef.current?.start();
+    };
+
+    const handleStop = () => {
+        speechStreamerRef.current?.stop();
+    };
+
+    return (
+        <div>
+            <h1>Speech Recognition</h1>
+            <GoogleSpeechStreamer ref={speechStreamerRef} onTranscript={handleTranscript} />
+            <button onClick={handleStart}>Start</button>
+            <button onClick={handleStop}>Stop</button>
+            <div>
+                <h2>Transcript:</h2>
+                <p>{transcript}</p>
+            </div>
+        </div>
+    );
+};
+
+export default App;
