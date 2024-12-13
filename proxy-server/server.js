@@ -25,8 +25,10 @@ const startStreaming = (socket) => {
                 encoding: 'LINEAR16',
                 sampleRateHertz: 48000,
                 languageCode: 'en-US',
-                interimResults: true,
+                interimResults: true, // Include interim results
+                singleUtterance: false, // Set to true if you want Google to close the session after a pause
             },
+            audioContent: {}, // Explicitly clear audio content
         })
         .on('data', (data) => {
             console.log(
@@ -52,6 +54,7 @@ const startStreaming = (socket) => {
     return recognizeStream;
 };
 
+
 // Function to start FFmpeg decoding
 const startFFmpeg = (recognizeStream) => {
     console.log('Initializing FFmpeg process...');
@@ -71,7 +74,12 @@ const startFFmpeg = (recognizeStream) => {
     });
 
     ffmpeg.stdout.on('data', (pcmData) => {
+        // console.log('Writing PCM data to Google Speech stream:', pcmData.length);
         recognizeStream.write(pcmData);
+    });
+
+    ffmpeg.stderr.on('data', (data) => {
+        // console.error(`555 FFmpeg stderr: ${data.toString()}`);
     });
 
     console.log('FFmpeg process started');
@@ -81,35 +89,72 @@ const startFFmpeg = (recognizeStream) => {
 
 // Handle WebSocket connections
 wss.on('connection', (socket) => {
-    console.log('Client connected');
+    console.log('\n\n=====\nClient connected');
     let ffmpegProcess = null;
     let recognizeStream = null;
 
     const stopStreaming = () => {
+        console.log('Stopping streaming pipeline...');
+        console.log('  recognizeStream exists:', !!recognizeStream);
+        console.log('  ffmpegProcess exists:', !!ffmpegProcess);
+
         if (ffmpegProcess) {
-            ffmpegProcess.stdin.end();
-            ffmpegProcess.kill(); // Ensure FFmpeg process is terminated
+            console.log('Stopping FFmpeg process...');
+            try {
+                ffmpegProcess.stdin.end();
+                ffmpegProcess.kill('SIGKILL'); // Forcefully terminate FFmpeg
+            } catch (error) {
+                console.error('Error terminating FFmpeg process:', error);
+            }
             ffmpegProcess = null;
         }
+
         if (recognizeStream) {
-            recognizeStream.end();
+            console.log('Ending Google Speech stream...');
+            try {
+                recognizeStream.end(); // End Google streaming
+            } catch (error) {
+                console.error('Error ending Google Speech stream:', error);
+            }
             recognizeStream = null;
         }
-        console.log('Stopped streaming to Google Speech API');
+
+        console.log('After stopping:');
+        console.log('  recognizeStream =', !!recognizeStream);
+        console.log('  ffmpegProcess =', !!ffmpegProcess);
+        console.log('Stopped streaming to Google Speech API.');
     };
-    
+
+
+
+
     const startStreamingToGoogle = () => {
-        if (!recognizeStream) {
-            console.log('Starting Google Speech streaming...');
-            recognizeStream = startStreaming(socket); // Start Google Speech streaming
-            ffmpegProcess = startFFmpeg(recognizeStream); // Start FFmpeg decoding
-            console.log('Resumed streaming to Google Speech API');
-        } else {
-            console.log('Streaming is already running');
+        console.log('Attempting to start streaming...');
+        console.log('Current state before starting:');
+        console.log('  recognizeStream =', !!recognizeStream);
+        console.log('  ffmpegProcess =', !!ffmpegProcess);
+        if (recognizeStream || ffmpegProcess) {
+            console.log('Streaming pipeline is already running. Restarting...');
         }
+        console.log('Stopping streaming inside start function...');
+        stopStreaming(); // Ensure all processes are terminated
+
+        console.log('Starting Google Speech streaming...');
+        recognizeStream = startStreaming(socket); // Create a new Google Speech stream
+        console.log('Google Speech stream initialized.');
+        ffmpegProcess = startFFmpeg(recognizeStream); // Create a new FFmpeg process
+        console.log('FFmpeg process initialized.');
+
+        // Clear FFmpeg buffer to avoid stale data
+        // ffmpegProcess.stdin.write(Buffer.alloc(0)); // Send an empty buffer to flush
+
+        console.log('Streaming pipeline started successfully.');
     };
-    
-    
+
+
+
+
+
 
     socket.on('message', (message) => {
         // console.log(message);
@@ -118,10 +163,10 @@ wss.on('connection', (socket) => {
             const parsedMessage = JSON.parse(message);
 
             if (parsedMessage.action === 'stop') {
-                console.log('Stop action received');
+                console.log('\n\nStop action received');
                 stopStreaming();
             } else if (parsedMessage.action === 'start') {
-                console.log('Start action received');
+                console.log('\n\nStart action received');
                 startStreamingToGoogle();
             }
         } catch (error) {

@@ -14,7 +14,7 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    console.log(isMuted);
+    console.log('isMuted', isMuted);
   }, [isMuted]);
 
   const handleReady = useCallback((controls: typeof streamControls.current) => {
@@ -32,6 +32,8 @@ const App: React.FC = () => {
     if (streamControls.current) {
       streamControls.current.toggleMute();
       setIsMuted(streamControls.current.isMuted());
+      if (isMuted)
+        streamControls.current?.start();
     } else {
       console.error('streamControls is not initialized');
     }
