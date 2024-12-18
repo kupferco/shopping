@@ -19,6 +19,10 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
     const mutedBufferRef = useRef<Blob[]>([]);
     const mutedRef = useRef(false);
 
+    const WEBSOCKET_ADDRESS_HTTP = 'ws://localhost:8082';
+    // const WEBSOCKET_ADDRESS_HTTPS = 'wss://localhost:8080';
+    const WEBSOCKET_ADDRESS_HTTPS = 'wss://voice-ui-proxy-server-14953211771.europe-west2.run.app';
+
     const toggleMute = () => {
         setMuted((prev) => {
             const newMuted = !prev;
@@ -52,7 +56,7 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
             // Reinitialize WebSocket if needed
             if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
                 console.log('Reinitializing WebSocket connection');
-                const ws = new WebSocket('ws://localhost:8082');
+                const ws = new WebSocket(WEBSOCKET_ADDRESS_HTTPS);
                 wsRef.current = ws;
 
                 ws.onopen = () => {
@@ -143,7 +147,7 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
 
 
 
-        const ws = new WebSocket('ws://localhost:8082');
+        const ws = new WebSocket(WEBSOCKET_ADDRESS_HTTPS);
         wsRef.current = ws;
 
         ws.onopen = () => {

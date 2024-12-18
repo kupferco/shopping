@@ -1,19 +1,55 @@
 require('dotenv').config();
 const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
+const http = require('http'); // Use HTTP for development; HTTPS is not required for Cloud Run
+const fs = require('fs');
 const { SpeechClient } = require('@google-cloud/speech');
+const WebSocket = require('ws');
 const { spawn } = require('child_process');
 const path = require('path');
 
-const PORT = 8082; // Proxy server port
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
 
-const speechClient = new SpeechClient();
+// Check if running in production (Cloud Run) or development (localhost)
+const isProduction = process.env.NODE_ENV === 'production';
+const PORT = process.env.PORT || 8080; // Use Cloud Run's dynamic port or 8443 for localhost
+
+let server;
+if (isProduction) {
+    // In production, use plain HTTP (Cloud Run handles HTTPS)
+    server = http.createServer(app);
+} else {
+    // For local development, use HTTPS with self-signed certificates
+    const options = {
+        key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
+        cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem')),
+    };
+    server = require('https').createServer(options, app);
+}
+
+const wss = new WebSocket.Server({ server });
+// Initialize Google Speech client
+let speechClient;
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.NODE_ENV === 'production') {
+    // Use local credentials for development
+    speechClient = new SpeechClient({
+        keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    });
+} else {
+    // Use default credentials in production (Cloud Run)
+    speechClient = new SpeechClient();
+}
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/', (req, res) => {
+    res.send('Hello, World!');
+  });
+
+  
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+  });
+  
 
 // Function to start Google Speech-to-Text streaming
 const startStreaming = (socket) => {
@@ -152,10 +188,6 @@ wss.on('connection', (socket) => {
     };
 
 
-
-
-
-
     socket.on('message', (message) => {
         // console.log(message);
         try {
@@ -192,6 +224,7 @@ wss.on('connection', (socket) => {
 });
 
 // Start the server
-server.listen(PORT, () => {
-    console.log(`Proxy server running at http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Proxy server running on port ${PORT}`);
 });
+
