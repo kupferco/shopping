@@ -155,7 +155,7 @@ const sendAudioMessage = (socket, audioBuffer) => {
 // Helper function to call GEMINI API
 async function fetchGeminiResponse(text) {
     try {
-        const response = await fetch('https://127.0.0.1:8080/api/gemini', {
+        const response = await fetch('https://proxy-server-14953211771.europe-west2.run.app/api/gemini', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ inputText: text }), // Properly format the body
@@ -178,7 +178,7 @@ async function fetchGeminiResponse(text) {
 // Helper function to call TTS API
 async function fetchTTSResponse(text) {
     try {
-        const response = await fetch('https://127.0.0.1:8080/api/tts', {
+        const response = await fetch('https://proxy-server-14953211771.europe-west2.run.app/api/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text }),
