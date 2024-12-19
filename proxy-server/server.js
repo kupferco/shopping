@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const http = require('http'); // Use HTTP for development; HTTPS is not required for Cloud Run
+const http = require('http');
 const fs = require('fs');
 const { SpeechClient } = require('@google-cloud/speech');
 const WebSocket = require('ws');
@@ -11,14 +11,12 @@ const app = express();
 
 // Check if running in production (Cloud Run) or development (localhost)
 const isProduction = process.env.NODE_ENV === 'production';
-const PORT = process.env.PORT || 8080; // Use Cloud Run's dynamic port or 8443 for localhost
+const PORT = process.env.PORT || 8080;
 
 let server;
 if (isProduction) {
-    // In production, use plain HTTP (Cloud Run handles HTTPS)
     server = http.createServer(app);
 } else {
-    // For local development, use HTTPS with self-signed certificates
     const options = {
         key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
         cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem')),
@@ -27,51 +25,41 @@ if (isProduction) {
 }
 
 const wss = new WebSocket.Server({ server });
-// Initialize Google Speech client
-let speechClient;
-if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.NODE_ENV === 'production') {
-    // Use local credentials for development
-    speechClient = new SpeechClient({
-        keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    });
-} else {
-    // Use default credentials in production (Cloud Run)
-    speechClient = new SpeechClient();
-}
+const speechClient = new SpeechClient();
+
+let recognizeStream = null;
+let ffmpegProcess = null;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
     res.send('Hello, World!');
-  });
+});
 
-  
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
-  });
-  
+});
 
 // Function to start Google Speech-to-Text streaming
-const startStreaming = (socket) => {
+const startGoogleStreaming = (socket) => {
     console.log('Starting Google Speech streaming...');
 
-    const recognizeStream = speechClient
-        .streamingRecognize({
-            config: {
-                encoding: 'LINEAR16',
-                sampleRateHertz: 48000,
-                languageCode: 'en-US',
-                interimResults: true, // Include interim results
-                singleUtterance: false, // Set to true if you want Google to close the session after a pause
-            },
-            audioContent: {}, // Explicitly clear audio content
-        })
-        .on('data', (data) => {
-            console.log(
-                'Transcription:',
-                data.results[0]?.alternatives[0]?.transcript || 'No speech detected'
-            );
+    if (recognizeStream) {
+        console.log('Recognize stream already active. Stopping existing stream.');
+        stopGoogleStreaming();
+    }
 
+    recognizeStream = speechClient.streamingRecognize({
+        config: {
+            encoding: 'LINEAR16',
+            sampleRateHertz: 48000,
+            languageCode: 'en-US',
+            interimResults: true,
+            singleUtterance: false,
+        },
+    })
+        .on('data', (data) => {
+            console.log('Transcription:', data.results[0]?.alternatives[0]?.transcript || 'No speech detected');
             socket.send(
                 JSON.stringify({
                     transcript: data.results[0]?.alternatives[0]?.transcript || '',
@@ -81,21 +69,28 @@ const startStreaming = (socket) => {
         })
         .on('error', (err) => {
             console.error('Google Streaming API error:', err);
-            socket.send(JSON.stringify({ error: 'Error processing audio' }));
         })
         .on('end', () => {
-            console.log('Google Streaming API ended');
+            console.log('Google Speech stream ended.');
         });
-
-    return recognizeStream;
 };
 
+// Function to stop Google Speech streaming
+const stopGoogleStreaming = () => {
+    if (recognizeStream) {
+        console.log('Stopping Google Speech stream...');
+        recognizeStream.end();
+        recognizeStream = null;
+    } else {
+        console.log('No active Google Speech stream to stop.');
+    }
+};
 
 // Function to start FFmpeg decoding
-const startFFmpeg = (recognizeStream) => {
+const startFFmpeg = () => {
     console.log('Initializing FFmpeg process...');
 
-    const ffmpeg = spawn('ffmpeg', [
+    ffmpegProcess = spawn('ffmpeg', [
         '-i', 'pipe:0',         // Input from stdin
         '-f', 's16le',          // Output raw PCM
         '-acodec', 'pcm_s16le', // PCM codec
@@ -104,122 +99,69 @@ const startFFmpeg = (recognizeStream) => {
         'pipe:1',               // Output to stdout
     ]);
 
-    ffmpeg.on('close', (code) => {
+    ffmpegProcess.on('close', (code) => {
         console.log(`FFmpeg process exited with code ${code}`);
-        recognizeStream.end(); // End Google streaming when FFmpeg stops
+        stopGoogleStreaming();
     });
 
-    ffmpeg.stdout.on('data', (pcmData) => {
-        // console.log('Writing PCM data to Google Speech stream:', pcmData.length);
-        recognizeStream.write(pcmData);
+    ffmpegProcess.stdout.on('data', (pcmData) => {
+        if (recognizeStream) {
+            console.log('Writing PCM data to Google Speech stream:', pcmData.length);
+            recognizeStream.write(pcmData);
+        } else {
+            console.log('Google Speech stream not active. Dropping PCM data.');
+        }
     });
 
-    ffmpeg.stderr.on('data', (data) => {
-        // console.error(`555 FFmpeg stderr: ${data.toString()}`);
+    ffmpegProcess.stderr.on('data', (data) => {
+        // Handle FFmpeg stderr logs if necessary
     });
 
-    console.log('FFmpeg process started');
-    return ffmpeg;
+    console.log('FFmpeg process started.');
 };
 
+// Function to stop FFmpeg
+const stopFFmpeg = () => {
+    if (ffmpegProcess) {
+        console.log('Stopping FFmpeg process...');
+        ffmpegProcess.stdin.end();
+        ffmpegProcess.kill('SIGKILL');
+        ffmpegProcess = null;
+    } else {
+        console.log('No active FFmpeg process to stop.');
+    }
+};
 
 // Handle WebSocket connections
 wss.on('connection', (socket) => {
-    console.log('\n\n=====\nClient connected');
-    let ffmpegProcess = null;
-    let recognizeStream = null;
-
-    const stopStreaming = () => {
-        console.log('Stopping streaming pipeline...');
-        console.log('  recognizeStream exists:', !!recognizeStream);
-        console.log('  ffmpegProcess exists:', !!ffmpegProcess);
-
-        if (ffmpegProcess) {
-            console.log('Stopping FFmpeg process...');
-            try {
-                ffmpegProcess.stdin.end();
-                ffmpegProcess.kill('SIGKILL'); // Forcefully terminate FFmpeg
-            } catch (error) {
-                console.error('Error terminating FFmpeg process:', error);
-            }
-            ffmpegProcess = null;
-        }
-
-        if (recognizeStream) {
-            console.log('Ending Google Speech stream...');
-            try {
-                recognizeStream.end(); // End Google streaming
-            } catch (error) {
-                console.error('Error ending Google Speech stream:', error);
-            }
-            recognizeStream = null;
-        }
-
-        console.log('After stopping:');
-        console.log('  recognizeStream =', !!recognizeStream);
-        console.log('  ffmpegProcess =', !!ffmpegProcess);
-        console.log('Stopped streaming to Google Speech API.');
-    };
-
-
-
-
-    const startStreamingToGoogle = () => {
-        console.log('Attempting to start streaming...');
-        console.log('Current state before starting:');
-        console.log('  recognizeStream =', !!recognizeStream);
-        console.log('  ffmpegProcess =', !!ffmpegProcess);
-        if (recognizeStream || ffmpegProcess) {
-            console.log('Streaming pipeline is already running. Restarting...');
-        }
-        console.log('Stopping streaming inside start function...');
-        stopStreaming(); // Ensure all processes are terminated
-
-        console.log('Starting Google Speech streaming...');
-        recognizeStream = startStreaming(socket); // Create a new Google Speech stream
-        console.log('Google Speech stream initialized.');
-        ffmpegProcess = startFFmpeg(recognizeStream); // Create a new FFmpeg process
-        console.log('FFmpeg process initialized.');
-
-        // Clear FFmpeg buffer to avoid stale data
-        // ffmpegProcess.stdin.write(Buffer.alloc(0)); // Send an empty buffer to flush
-
-        console.log('Streaming pipeline started successfully.');
-    };
-
+    console.log('Client connected.');
 
     socket.on('message', (message) => {
-        // console.log(message);
         try {
-            // Attempt to parse the message as JSON
             const parsedMessage = JSON.parse(message);
 
-            if (parsedMessage.action === 'stop') {
-                console.log('\n\nStop action received');
-                stopStreaming();
-            } else if (parsedMessage.action === 'start') {
-                console.log('\n\nStart action received');
-                startStreamingToGoogle();
+            if (parsedMessage.action === 'start') {
+                console.log('Start action received.');
+                startGoogleStreaming(socket);
+                if (!ffmpegProcess) startFFmpeg();
+            } else if (parsedMessage.action === 'stop') {
+                console.log('Stop action received.');
+                stopGoogleStreaming();
+                // stopFFmpeg();
             }
         } catch (error) {
-            // If JSON parsing fails, treat it as raw audio data
             if (ffmpegProcess) {
-                try {
-                    ffmpegProcess.stdin.write(message);
-                } catch (ffmpegError) {
-                    console.error('Error piping to FFmpeg:', ffmpegError);
-                }
+                ffmpegProcess.stdin.write(message);
             } else {
-                console.error('Received raw audio data, but FFmpeg is not running');
+                console.error('Received raw audio data, but FFmpeg is not running.');
             }
         }
     });
 
-
-
     socket.on('close', () => {
-        console.log('Client disconnected');
-        stopStreaming();
+        console.log('Client disconnected. Cleaning up resources.');
+        stopGoogleStreaming();
+        stopFFmpeg();
     });
 });
 
@@ -227,4 +169,3 @@ wss.on('connection', (socket) => {
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Proxy server running on port ${PORT}`);
 });
-

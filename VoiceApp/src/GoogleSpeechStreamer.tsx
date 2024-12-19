@@ -5,6 +5,7 @@ interface GoogleSpeechStreamProps {
     onReady: (controlFunctions: {
         start: () => void;
         stop: () => void;
+        unmute: () => void;
         toggleMute: () => void;
         isMuted: () => boolean;
     }) => void;
@@ -20,8 +21,9 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
     const mutedRef = useRef(false);
 
     const WEBSOCKET_ADDRESS_HTTP = 'ws://localhost:8082';
+    const WEBSOCKET_ADDRESS_HTTPS = 'wss://localhost:8080';
     // const WEBSOCKET_ADDRESS_HTTPS = 'wss://localhost:8080';
-    const WEBSOCKET_ADDRESS_HTTPS = 'wss://voice-ui-proxy-server-14953211771.europe-west2.run.app';
+    // const WEBSOCKET_ADDRESS_HTTPS = 'wss://voice-ui-proxy-server-14953211771.europe-west2.run.app';
 
     const toggleMute = () => {
         setMuted((prev) => {
@@ -53,18 +55,31 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
         const start = async () => {
             console.log('Starting recording...');
 
+            // Ensure previous streams are cleaned up
+            if (mediaRecorderRef.current) {
+                console.log('Stopping previous MediaRecorder...');
+                mediaRecorderRef.current.ondataavailable = null; // Remove the event handler
+                mediaRecorderRef.current.stop(); // Stop MediaRecorder
+                mediaRecorderRef.current = null; // Clear the reference
+            }
+
+            if (audioStream) {
+                console.log('Stopping previous audio stream...');
+                audioStream.getTracks().forEach((track) => track.stop());
+                audioStream = null;
+            }
+
             // Reinitialize WebSocket if needed
             if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
                 console.log('Reinitializing WebSocket connection');
-                const ws = new WebSocket(WEBSOCKET_ADDRESS_HTTPS);
-                wsRef.current = ws;
+                wsRef.current = new WebSocket(WEBSOCKET_ADDRESS_HTTPS);
 
-                ws.onopen = () => {
+                wsRef.current.onopen = () => {
                     console.log('WebSocket connection established');
-                    ws.send(JSON.stringify({ action: 'start' })); // Notify server to start
+                    wsRef.current?.send(JSON.stringify({ action: 'start' })); // Notify server to start
                 };
 
-                ws.onmessage = (event) => {
+                wsRef.current.onmessage = (event) => {
                     const message = JSON.parse(event.data);
                     console.log('Received message:', message);
                     if (message.transcript) {
@@ -72,22 +87,16 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
                     }
                 };
 
-                ws.onerror = (error) => {
+                wsRef.current.onerror = (error) => {
                     console.error('WebSocket error:', error);
                 };
 
-                ws.onclose = (event) => {
+                wsRef.current.onclose = (event) => {
                     console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
                 };
             } else {
                 console.log('WebSocket is already open');
                 wsRef.current.send(JSON.stringify({ action: 'start' })); // Notify server to start
-            }
-
-            // Ensure previous streams are cleaned up
-            if (mediaRecorderRef.current) {
-                mediaRecorderRef.current.stop();
-                mediaRecorderRef.current = null;
             }
 
             // Request microphone access and start recording
@@ -97,10 +106,13 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
                 mediaRecorderRef.current = mediaRecorder;
 
                 mediaRecorder.ondataavailable = (event) => {
+                    // console.log("MediaRecorder data available:", event.data.size, "bytes");
                     if (!mutedRef.current && wsRef.current?.readyState === WebSocket.OPEN && mediaRecorderRef.current) {
+                        // console.log("Sending data to WebSocket...");
                         wsRef.current.send(event.data); // Send audio data only if active
                     }
                 };
+
 
                 mediaRecorder.start(250); // Send data every 250ms
                 console.log('Recording started.');
@@ -119,7 +131,10 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
                 mediaRecorderRef.current.ondataavailable = null; // Remove the event handler
                 mediaRecorderRef.current.stop(); // Stop MediaRecorder
                 mediaRecorderRef.current = null; // Clear the reference
-                console.log('MediaRecorder stopped');
+                if (mutedRef.current)
+                    toggleMute();
+
+                console.log('555 MediaRecorder stopped');
             }
 
             // Stop all audio tracks
@@ -143,16 +158,49 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
             }
         };
 
+        const unmute = () => {
+            return;
+            console.log('Unmute please!!');
+            console.log(wsRef.current);
+            console.log(wsRef.current?.readyState);
+            console.log(WebSocket.OPEN);
+            console.log('Reinitializing WebSocket connection');
+            wsRef.current = new WebSocket(WEBSOCKET_ADDRESS_HTTPS);
+
+            wsRef.current.onopen = () => {
+                console.log('WebSocket connection established');
+                wsRef.current?.send(JSON.stringify({ action: 'start' })); // Notify server to start
+            };
+
+            wsRef.current.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                console.log('Received message:', message);
+                if (message.transcript) {
+                    onTranscript(message.transcript, message.isFinal);
+                }
+            };
+
+            wsRef.current.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            wsRef.current.onclose = (event) => {
+                console.log(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
+            };
+        }
 
 
 
+
+
+        console.log('Initialising Websocket!!');
 
         const ws = new WebSocket(WEBSOCKET_ADDRESS_HTTPS);
         wsRef.current = ws;
 
         ws.onopen = () => {
             console.log('WebSocket connection established.');
-            onReady({ start, stop, toggleMute, isMuted });
+            onReady({ start, stop, unmute, toggleMute, isMuted });
         };
 
         ws.onmessage = (event) => {

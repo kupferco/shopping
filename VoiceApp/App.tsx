@@ -8,6 +8,7 @@ const App: React.FC = () => {
   const streamControls = useRef<{
     start: () => void;
     stop: () => void;
+    unmute: () => void;
     toggleMute: () => void;
     isMuted: () => boolean;
   } | null>(null);
@@ -32,8 +33,8 @@ const App: React.FC = () => {
     if (streamControls.current) {
       streamControls.current.toggleMute();
       setIsMuted(streamControls.current.isMuted());
-      if (isMuted)
-        streamControls.current?.start();
+      // if (isMuted)
+      //   streamControls.current?.unmute();
     } else {
       console.error('streamControls is not initialized');
     }
