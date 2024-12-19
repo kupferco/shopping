@@ -4,6 +4,7 @@ import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 const App: React.FC = () => {
   const [transcript, setTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
+  const [isMicOn, setIsMicOn] = useState(false);
 
   const streamControls = useRef<{
     start: () => void;
@@ -45,17 +46,37 @@ const App: React.FC = () => {
     setIsMuted(muted);
   };
 
+  const handleStart = () => {
+    if (streamControls.current) {
+      streamControls.current.start();
+      setIsMicOn(true); // Set microphone state to on
+    }
+  };
+
+  const handleStop = () => {
+    if (streamControls.current) {
+      streamControls.current.stop();
+      setIsMicOn(false); // Set microphone state to off
+    }
+  };
+
   return (
     <div>
       <h1>Speech to Text</h1>
       <p>Transcript: {transcript}</p>
-      <button onClick={() => streamControls.current?.start()}>Start</button>
-      <button onClick={() => streamControls.current?.stop()}>Stop</button>
-      <button onClick={handleMute}>{isMuted ? 'Unmute' : 'Mute'}</button>
+      <button onClick={handleStart} disabled={isMicOn}>
+        Start
+      </button>
+      <button onClick={handleStop} disabled={!isMicOn}>
+        Stop
+      </button>
+      <button onClick={handleMute} disabled={!isMicOn}>
+        {isMuted ? 'Unmute' : 'Mute'}
+      </button>
       <GoogleSpeechStream
         onTranscript={handleTranscript}
         onReady={handleReady}
-        onMuteChange={handleMuteChange} // Pass this prop
+        onMuteChange={handleMuteChange}
       />
     </div>
   );

@@ -30,6 +30,10 @@ const speechClient = new SpeechClient();
 let recognizeStream = null;
 let ffmpegProcess = null;
 
+const streamingState = {
+    isStreaming: false, // Tracks if the pipeline is active
+};
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
@@ -42,13 +46,18 @@ app.get('/health', (req, res) => {
 
 // Function to start Google Speech-to-Text streaming
 const startGoogleStreaming = (socket) => {
-    console.log('Starting Google Speech streaming...');
+    if (streamingState.isStreaming) {
+        console.log('Streaming already active. Ignoring start request.');
+        return;
+    }
 
     if (recognizeStream) {
         console.log('Recognize stream already active. Stopping existing stream.');
         stopGoogleStreaming();
     }
 
+    console.log('\n\n====\nStarting Google Speech streaming...');
+    streamingState.isStreaming = true;
     recognizeStream = speechClient.streamingRecognize({
         config: {
             encoding: 'LINEAR16',
@@ -77,6 +86,14 @@ const startGoogleStreaming = (socket) => {
 
 // Function to stop Google Speech streaming
 const stopGoogleStreaming = () => {
+    if (!streamingState.isStreaming) {
+        console.log('No active streaming to stop. Ignoring stop request.');
+        return;
+    }
+
+    console.log('Starting process to stop Google Speech stream...');
+    streamingState.isStreaming = false;
+
     if (recognizeStream) {
         console.log('Stopping Google Speech stream...');
         recognizeStream.end();
