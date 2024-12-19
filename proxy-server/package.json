@@ -12,6 +12,8 @@
   "description": "A proxy server handling WebSocket connections and Google STT/TTS integration.",
   "dependencies": {
     "@google-cloud/speech": "^6.7.0",
+    "@google-cloud/text-to-speech": "^5.7.0",
+    "axios": "^1.7.9",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "http": "^0.0.1-security",

@@ -1,14 +1,21 @@
 require('dotenv').config();
+const fs = require('fs');
 const express = require('express');
 const http = require('http');
-const fs = require('fs');
-const { SpeechClient } = require('@google-cloud/speech');
 const WebSocket = require('ws');
-const { spawn } = require('child_process');
 const path = require('path');
+const { startAudioProcessing,
+    processAudioData,
+    stopGoogleStreaming,
+    stopAudioProcessing,
+    eventEmitter } = require('./services/audioProcessingService');
+const { handleTTSRequest } = require('./routes/ttsHandler');
+const { startSTTStreaming } = require('./routes/sttHandler');
+const { handleGeminiRequest } = require('./routes/geminiHandler');
+
+
 
 const app = express();
-
 // Check if running in production (Cloud Run) or development (localhost)
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 8080;
@@ -22,167 +29,196 @@ if (isProduction) {
         cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem')),
     };
     server = require('https').createServer(options, app);
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
+// const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-const speechClient = new SpeechClient();
+const activeSockets = {};
 
-let recognizeStream = null;
-let ffmpegProcess = null;
-
-const streamingState = {
-    isStreaming: false, // Tracks if the pipeline is active
-};
-
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/', (req, res) => {
-    res.send('Hello, World!');
-});
+app.get('/', (req, res) => res.send('Hello, World!'));
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
+// API Endpoints
+app.post('/api/tts', handleTTSRequest);
+app.post('/api/stt', startSTTStreaming);
+app.post('/api/gemini', handleGeminiRequest);
 
-// Function to start Google Speech-to-Text streaming
-const startGoogleStreaming = (socket) => {
-    if (streamingState.isStreaming) {
-        console.log('Streaming already active. Ignoring start request.');
-        return;
-    }
-
-    if (recognizeStream) {
-        console.log('Recognize stream already active. Stopping existing stream.');
-        stopGoogleStreaming();
-    }
-
-    console.log('\n\n====\nStarting Google Speech streaming...');
-    streamingState.isStreaming = true;
-    recognizeStream = speechClient.streamingRecognize({
-        config: {
-            encoding: 'LINEAR16',
-            sampleRateHertz: 48000,
-            languageCode: 'en-US',
-            interimResults: true,
-            singleUtterance: false,
-        },
-    })
-        .on('data', (data) => {
-            console.log('Transcription:', data.results[0]?.alternatives[0]?.transcript || 'No speech detected');
-            socket.send(
-                JSON.stringify({
-                    transcript: data.results[0]?.alternatives[0]?.transcript || '',
-                    isFinal: data.results[0]?.isFinal || false,
-                })
-            );
-        })
-        .on('error', (err) => {
-            console.error('Google Streaming API error:', err);
-        })
-        .on('end', () => {
-            console.log('Google Speech stream ended.');
-        });
-};
-
-// Function to stop Google Speech streaming
-const stopGoogleStreaming = () => {
-    if (!streamingState.isStreaming) {
-        console.log('No active streaming to stop. Ignoring stop request.');
-        return;
-    }
-
-    console.log('Starting process to stop Google Speech stream...');
-    streamingState.isStreaming = false;
-
-    if (recognizeStream) {
-        console.log('Stopping Google Speech stream...');
-        recognizeStream.end();
-        recognizeStream = null;
-    } else {
-        console.log('No active Google Speech stream to stop.');
-    }
-};
-
-// Function to start FFmpeg decoding
-const startFFmpeg = () => {
-    console.log('Initializing FFmpeg process...');
-
-    ffmpegProcess = spawn('ffmpeg', [
-        '-i', 'pipe:0',         // Input from stdin
-        '-f', 's16le',          // Output raw PCM
-        '-acodec', 'pcm_s16le', // PCM codec
-        '-ac', '1',             // Mono audio
-        '-ar', '48000',         // 48kHz sample rate
-        'pipe:1',               // Output to stdout
-    ]);
-
-    ffmpegProcess.on('close', (code) => {
-        console.log(`FFmpeg process exited with code ${code}`);
-        stopGoogleStreaming();
-    });
-
-    ffmpegProcess.stdout.on('data', (pcmData) => {
-        if (recognizeStream) {
-            console.log('Writing PCM data to Google Speech stream:', pcmData.length);
-            recognizeStream.write(pcmData);
-        } else {
-            console.log('Google Speech stream not active. Dropping PCM data.');
-        }
-    });
-
-    ffmpegProcess.stderr.on('data', (data) => {
-        // Handle FFmpeg stderr logs if necessary
-    });
-
-    console.log('FFmpeg process started.');
-};
-
-// Function to stop FFmpeg
-const stopFFmpeg = () => {
-    if (ffmpegProcess) {
-        console.log('Stopping FFmpeg process...');
-        ffmpegProcess.stdin.end();
-        ffmpegProcess.kill('SIGKILL');
-        ffmpegProcess = null;
-    } else {
-        console.log('No active FFmpeg process to stop.');
-    }
-};
-
-// Handle WebSocket connections
+// WebSocket Connections
 wss.on('connection', (socket) => {
     console.log('Client connected.');
+    const socketId = Date.now(); // Unique identifier for the socket
+    activeSockets[socketId] = socket;
+
+    console.log('Client connected:', socketId);
 
     socket.on('message', (message) => {
         try {
             const parsedMessage = JSON.parse(message);
 
-            if (parsedMessage.action === 'start') {
+            if (parsedMessage.action === 'start_stt') {
                 console.log('Start action received.');
-                startGoogleStreaming(socket);
-                if (!ffmpegProcess) startFFmpeg();
-            } else if (parsedMessage.action === 'stop') {
+                startAudioProcessing(socketId);
+            } else if (parsedMessage.action === 'stop_stt') {
                 console.log('Stop action received.');
                 stopGoogleStreaming();
-                // stopFFmpeg();
             }
         } catch (error) {
-            if (ffmpegProcess) {
-                ffmpegProcess.stdin.write(message);
-            } else {
-                console.error('Received raw audio data, but FFmpeg is not running.');
-            }
+            // If the message isn't JSON, treat it as raw audio data
+            // console.log(message)
+            processAudioData(message);
         }
     });
 
     socket.on('close', () => {
         console.log('Client disconnected. Cleaning up resources.');
-        stopGoogleStreaming();
-        stopFFmpeg();
+        stopAudioProcessing();
     });
 });
 
+// Listen for transcription events
+eventEmitter.on('transcription', async ({ socketId, transcript, isFinal }) => {
+    const socket = activeSockets[socketId];
+    if (!socket) return;
+
+    // Send transcription to the client
+    socket.send(JSON.stringify({
+        "action": "stt",
+        "payload": {
+            "transcript": transcript,
+            "isFinal": isFinal
+        }
+    }));
+
+    if (isFinal) {
+        console.log('Final transcript:', transcript);
+
+        try {
+            // Send transcript to TTS API
+            const geminiResponse = await fetchGeminiResponse(transcript);
+
+            // Send audio response to the client
+            if (geminiResponse) {
+                console.log('Gemini response', geminiResponse);
+                // socket.send(JSON.stringify({ agent: geminiResponse }));
+                socket.send(JSON.stringify({
+                    "action": "gemini",
+                    "payload": {
+                        "agent": geminiResponse
+                    }
+                }));
+            
+                // Send transcript to TTS API
+                const audioBufferResponse = await fetchTTSResponse(transcript);
+
+                // Send audio response to the client
+                if (audioBufferResponse) {
+                    console.log('Sending audio to client...');
+                    // Example usage
+                    sendAudioMessage(socket, audioBufferResponse);
+                    // socket.send(audioBufferResponse, { binary: true }); // Send audio buffer to client
+                } else {
+                    console.error('Failed to generate audio.');
+                }
+            }
+        } catch (error) {
+            console.log('Something wrong with Gemini response ::', error);
+        }
+
+    }
+});
+
+const sendAudioMessage = (socket, audioBuffer) => {
+    // Create metadata as a JSON object
+    const metadata = {
+        action: 'tts_audio',
+    };
+
+    // Convert metadata to a JSON string and then to a buffer
+    const metadataBuffer = Buffer.from(JSON.stringify(metadata));
+
+    // Create a separator buffer to distinguish metadata from audio data
+    const separator = Buffer.from('\n');
+
+    // Concatenate metadata, separator, and audioBuffer
+    const combinedBuffer = Buffer.concat([metadataBuffer, separator, audioBuffer]);
+
+    // Send the combined buffer via WebSocket
+    console.log('Sending buffer!!')
+    socket.send(combinedBuffer);
+};
+
+
+// Helper function to call GEMINI API
+async function fetchGeminiResponse(text) {
+    try {
+        const response = await fetch('https://127.0.0.1:8080/api/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ inputText: text }), // Properly format the body
+        });
+
+        if (!response.ok) {
+            console.error('Failed to fetch Gemini response:', response.statusText);
+            return null;
+        }
+
+        const jsonResponse = await response.json(); // Parse JSON response
+        return jsonResponse;
+    } catch (error) {
+        console.error('Error fetching Gemini response:', error);
+        return null;
+    }
+}
+
+
+// Helper function to call TTS API
+async function fetchTTSResponse(text) {
+    try {
+        const response = await fetch('https://127.0.0.1:8080/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+        });
+
+        if (!response.ok) {
+            console.error('Failed to fetch TTS response:', response.statusText);
+            return null;
+        }
+
+        // Read the response as an ArrayBuffer
+        const audioBuffer = await response.arrayBuffer();
+
+        // Write the buffer to a file for testing
+        // const outputPath = path.join(__dirname, 'output.mp3');
+        // fs.writeFileSync(outputPath, Buffer.from(audioBuffer));
+        // console.log(`Audio saved to ${outputPath}`);
+
+        // Return the buffer (can be sent to client via WebSocket)
+        return Buffer.from(audioBuffer);
+    } catch (error) {
+        console.error('Error fetching TTS response:', error);
+        return null;
+    }
+}
+
+// Test the function
+// fetchTTSResponse("Hello, Gemini!").then((audioBuffer) => {
+//     if (audioBuffer) {
+//         console.log('TTS audio fetched successfully!');
+//     } else {
+//         console.error('Failed to fetch TTS audio.');
+//     }
+// });
+
+
+
+
 // Start the server
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Proxy server running on port ${PORT}`);
+    console.log(`Proxy server running on port https://localhost:${PORT}`);
 });
+
