@@ -16,7 +16,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         // const WEBSOCKET_ADDRESS = 'wss://127.0.0.1:8080';
         // const WEBSOCKET_ADDRESS = 'wss://localhost:8080';
         // const WEBSOCKET_ADDRESS = 'wss://proxy-server-14953211771.europe-west2.run.app/';
-        const WEBSOCKET_ADDRESS = 'wss://b0c0-2a00-23c8-16b2-8301-f406-cdcd-4f20-3c3f.ngrok-free.app/';
+        const WEBSOCKET_ADDRESS = 'wss://ab48-2a00-23c8-16b2-8301-b4ba-6b2a-34a2-ca6a.ngrok-free.app/';
         wsRef.current = new WebSocket(WEBSOCKET_ADDRESS);
 
         wsRef.current.onopen = () => console.log('WebSocket connected.');
@@ -24,7 +24,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             // console.log('WebSocket message received:', event.data);
         
             if (event.data instanceof Blob) {
-                console.log(`Action: tts_audio, Payload:`, event.data);
+                // console.log(`Action: tts_audio, Payload:`, event.data);
                 // Pass the raw blob to the registered handler
                 if (handlersRef.current['tts_audio']) {
                     handlersRef.current['tts_audio'](event.data);
