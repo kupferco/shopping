@@ -2,6 +2,22 @@
 
 This project enables speech-to-text (STT) and text-to-speech (TTS) processing using WebSocket connections and Google APIs. Below are the setup, deployment, and debugging instructions.
 
+---
+
+## Endpoints
+
+### General Endpoints
+- **`GET /`**: Returns a simple greeting message ("Hello, World!").
+- **`GET /health`**: Returns `OK` if the server is running.
+
+### API Endpoints
+- **`POST /api/tts`**: Handles text-to-speech requests.
+- **`POST /api/stt`**: Handles speech-to-text requests via HTTP (currently unused).
+- **`POST /api/gemini`**: Sends user input to the Gemini API and retrieves a response.
+- **`GET /api/gemini/history`**: Retrieves the conversation history.
+
+---
+
 ## Prerequisites
 
 - Node.js (v16+)
@@ -9,11 +25,14 @@ This project enables speech-to-text (STT) and text-to-speech (TTS) processing us
 - Google Cloud SDK (`gcloud` CLI)
 - FFmpeg installed locally
 
+---
+
 ## Getting Started
 
 ### Install Dependencies
 ```bash
 npm install
+
 ```
 
 ### Run Locally
@@ -27,7 +46,7 @@ nodemon server.js
 npm start
 ```
 
-The server runs by default on `localhost:8080`.
+The server runs by default on `https://localhost:8080`.
 
 ---
 
@@ -119,16 +138,14 @@ gcloud run deploy proxy-server \
 - Check for errors related to WebSocket messages, STT/TTS processing, or API invocations.
 
 ### Debug Locally
-Run the server locally with `npm start` and check `console.log` outputs:
+It's possible to connfigure .env locally to switch off gemini api requests during UI or other non gemini related dev. The mock service will just playback whatever is transcripted from user's input.
+
+```bash
+USE_MOCK_GEMINI=true
 
 ```bash
 npm start
 ```
-
-Add `console.log` statements in key parts of the code to trace:
-- WebSocket message flow.
-- STT and TTS API responses.
-- Error-handling blocks.
 
 ---
 

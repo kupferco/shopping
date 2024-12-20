@@ -11,8 +11,11 @@ const { startAudioProcessing,
     eventEmitter } = require('./services/audioProcessingService');
 const { handleTTSRequest } = require('./routes/ttsHandler');
 const { startSTTStreaming } = require('./routes/sttHandler');
-const { handleGeminiRequest } = require('./routes/geminiHandler');
+const { handleGeminiRequest, handleGeminiHistoryRequest } = require('./routes/geminiHandler');
 
+const { sendAudioMessage } = require('./utils/audioUtils');
+const { fetchTTSResponse } = require('./services/ttsService');
+const { fetchGeminiResponse } = require('./services/geminiService');
 
 
 const app = express();
@@ -20,16 +23,16 @@ const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 8080;
 
-let server_endpoint;
+let serverEndpoint;
 let server;
 if (isProduction) {
     server = http.createServer(app);
-    server_endpoint = process.env.PROXY_SERVER_PRODUCTION;
+    serverEndpoint = process.env.PROXY_SERVER_PRODUCTION;
 } else if (process.env.HTTPS_ROUTE === 'NGROK') {
     server = http.createServer(app);
-    server_endpoint = process.env.PROXY_SERVER_NGROK;
+    serverEndpoint = process.env.PROXY_SERVER_NGROK;
 } else {
-    server_endpoint = process.env.PROXY_SERVER_DEVELOPMENT
+    serverEndpoint = process.env.PROXY_SERVER_DEVELOPMENT
     const options = {
         key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
         cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem')),
@@ -52,6 +55,7 @@ app.get('/health', (req, res) => res.status(200).send('OK'));
 app.post('/api/tts', handleTTSRequest);
 app.post('/api/stt', startSTTStreaming);
 app.post('/api/gemini', handleGeminiRequest);
+app.get('/api/gemini/history', handleGeminiHistoryRequest);
 
 // WebSocket Connections
 wss.on('connection', (socket) => {
@@ -92,124 +96,79 @@ eventEmitter.on('transcription', async ({ socketId, transcript, isFinal }) => {
 
     // Send transcription to the client
     socket.send(JSON.stringify({
-        "action": "stt",
-        "payload": {
-            "transcript": transcript,
-            "isFinal": isFinal
-        }
+        action: 'stt',
+        payload: {
+            transcript,
+            isFinal,
+        },
     }));
 
     if (isFinal) {
         console.log('Final transcript:', transcript);
 
         try {
-            // Send transcript to TTS API
-            const geminiResponse = await fetchGeminiResponse(transcript);
+            // Call the Gemini service for a response
+            const geminiData = await fetchGeminiResponse(serverEndpoint, transcript);
 
-            // Send audio response to the client
-            if (geminiResponse) {
-                console.log('Gemini response', geminiResponse);
-                // socket.send(JSON.stringify({ agent: geminiResponse }));
-                socket.send(JSON.stringify({
-                    "action": "gemini",
-                    "payload": {
-                        "agent": geminiResponse
-                    }
-                }));
-            
-                // Send transcript to TTS API
-                const audioBufferResponse = await fetchTTSResponse(transcript);
+            if (!geminiData) {
+                console.error('Failed to fetch Gemini response.');
+                return;
+            }
 
-                // Send audio response to the client
-                if (audioBufferResponse) {
-                    console.log('Sending audio to client...');
-                    // Example usage
-                    sendAudioMessage(socket, audioBufferResponse);
-                    // socket.send(audioBufferResponse, { binary: true }); // Send audio buffer to client
-                } else {
-                    console.error('Failed to generate audio.');
-                }
+            // Send the Gemini response back to the client
+            socket.send(JSON.stringify({
+                action: 'gemini',
+                payload: {
+                    agent: geminiData.response,
+                },
+            }));
+
+            // Process the Gemini response with TTS
+            const audioBufferResponse = await fetchTTSResponse(serverEndpoint, geminiData.response);
+
+            if (audioBufferResponse) {
+                console.log('Sending audio to client...');
+                const combinedBuffer = sendAudioMessage(audioBufferResponse);
+                socket.send(combinedBuffer);
+            } else {
+                console.error('Failed to generate audio.');
             }
         } catch (error) {
-            console.log('Something wrong with Gemini response ::', error);
+            console.error('Error in transcription event:', error);
         }
-
     }
 });
 
-const sendAudioMessage = (socket, audioBuffer) => {
-    // Create metadata as a JSON object
-    const metadata = {
-        action: 'tts_audio',
-    };
-
-    // Convert metadata to a JSON string and then to a buffer
-    const metadataBuffer = Buffer.from(JSON.stringify(metadata));
-
-    // Create a separator buffer to distinguish metadata from audio data
-    const separator = Buffer.from('\n');
-
-    // Concatenate metadata, separator, and audioBuffer
-    const combinedBuffer = Buffer.concat([metadataBuffer, separator, audioBuffer]);
-
-    // Send the combined buffer via WebSocket
-    console.log('Sending buffer!!')
-    socket.send(combinedBuffer);
-};
-
-
-// Helper function to call GEMINI API
-async function fetchGeminiResponse(text) {
-    try {
-        const response = await fetch(`${server_endpoint}/api/gemini`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ inputText: text }), // Properly format the body
-        });
-
-        if (!response.ok) {
-            console.error('Failed to fetch Gemini response:', response.statusText);
-            return null;
-        }
-
-        const jsonResponse = await response.json(); // Parse JSON response
-        return jsonResponse;
-    } catch (error) {
-        console.error('Error fetching Gemini response:', error);
-        return null;
-    }
-}
-
 
 // Helper function to call TTS API
-async function fetchTTSResponse(text) {
-    try {
-        const response = await fetch(`${server_endpoint}/api/tts`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text }),
-        });
+// async function fetchTTSResponse(text) {
+//     try {
+//         const response = await fetch(`${serverEndpoint}/api/tts`, {
+//             method: 'POST',
+//             headers: { 'Content-Type': 'application/json' },
+//             body: JSON.stringify({ text }),
+//         });
 
-        if (!response.ok) {
-            console.error('Failed to fetch TTS response:', response.statusText);
-            return null;
-        }
+//         if (!response.ok) {
+//             console.error('Failed to fetch TTS response:', response.statusText);
+//             return null;
+//         }
 
-        // Read the response as an ArrayBuffer
-        const audioBuffer = await response.arrayBuffer();
+//         // Read the response as an ArrayBuffer
+//         const audioBuffer = await response.arrayBuffer();
 
-        // Write the buffer to a file for testing
-        // const outputPath = path.join(__dirname, 'output.mp3');
-        // fs.writeFileSync(outputPath, Buffer.from(audioBuffer));
-        // console.log(`Audio saved to ${outputPath}`);
+//         // Write the buffer to a file for testing
+//         // const outputPath = path.join(__dirname, 'output.mp3');
+//         // fs.writeFileSync(outputPath, Buffer.from(audioBuffer));
+//         // console.log(`Audio saved to ${outputPath}`);
 
-        // Return the buffer (can be sent to client via WebSocket)
-        return Buffer.from(audioBuffer);
-    } catch (error) {
-        console.error('Error fetching TTS response:', error);
-        return null;
-    }
-}
+//         // Return the buffer (can be sent to client via WebSocket)
+//         return Buffer.from(audioBuffer);
+//     } catch (error) {
+//         console.error('Error fetching TTS response:', error);
+//         return null;
+//     }
+// }
 
 // Test the function
 // fetchTTSResponse("Hello, Gemini!").then((audioBuffer) => {
@@ -225,6 +184,6 @@ async function fetchTTSResponse(text) {
 
 // Start the server
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Proxy server running on port ${server_endpoint}`);
+    console.log(`Proxy server running on port ${serverEndpoint}`);
 });
 
