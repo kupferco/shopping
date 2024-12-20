@@ -16,11 +16,15 @@ The project is composed of the following components:
    - Located in the `VoiceApp` folder.
    - Deployment is managed via Firebase Hosting.
 
+3. **Websocket communication**
+   - All communication between client and server is made via websocket.
+
+
 ## Purpose
 
 This repository focuses on the technical integration aspects of conversational app development. A separate repository exists to focus on UI design and development:
 
-- [Voice UI Exploration Repository](<add url here>)
+- [Voice UI Exploration Repository](https://github.com/kupferco/voice-ui-exploration)
 
 The `Voice UI Exploration` repository serves as a boilerplate for building a more comprehensive application with a growing feature set and a user-centric design.
 
