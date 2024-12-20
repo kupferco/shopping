@@ -31,6 +31,56 @@ The server runs by default on `localhost:8080`.
 
 ---
 
+## Testing Locally with `ngrok`
+
+To test locally on a mobile device or external network using `ngrok`, follow these steps:
+
+### Prerequisites
+
+1. Install `ngrok`: 
+   ```bash
+   npm install -g ngrok
+   ```
+
+2. Set up an `ngrok.yml` configuration file:
+
+   Create the file `~/.ngrok/ngrok.yml` (if it doesn’t already exist):
+   ```yaml
+   version: "2"
+   authtoken: YOUR_NGROK_AUTH_TOKEN
+   tunnels:
+     client:
+       proto: http
+       addr: 8081
+     proxy:
+       proto: https
+       addr: 8080
+   ```
+
+   Replace `YOUR_NGROK_AUTH_TOKEN` with your actual token from the [ngrok dashboard](https://dashboard.ngrok.com/get-started/your-authtoken).
+
+### Run `ngrok` Tunnels
+
+Start both tunnels defined in your `ngrok.yml` file:
+```bash
+ngrok start --all
+```
+
+This will create two public URLs for testing:
+- **Client:** Accessible at the public URL for `client` (e.g., `http://abc123.ngrok.io`).
+- **Proxy:** Accessible at the public URL for `proxy` (e.g., `https://xyz456.ngrok.io`).
+
+### Update Client and Proxy Configurations
+
+1. Replace `localhost` references in the client configuration with the `ngrok` public URL for the client.
+   ```javascript
+   const socket = new WebSocket('wss://xyz456.ngrok.io');
+   ```
+
+2. Use the public `ngrok` URLs to test the client and proxy from your mobile browser.
+
+---
+
 ## Docker Deployment
 
 ### Build the Docker Image

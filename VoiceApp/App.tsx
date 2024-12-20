@@ -65,7 +65,7 @@ const App: React.FC = () => {
   return (
     <WebSocketProvider>
       <div>
-        <h1>Speech to Text and Text to Speech</h1>
+        <h1>Voice UI Development</h1>
         <p>Transcript: {transcript}</p>
         <button onClick={handleStart} disabled={isMicOn}>
           Start

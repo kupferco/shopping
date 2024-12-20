@@ -1,13 +1,47 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useWebSocket } from './WebSocketManager';
 
 const TTSService: React.FC = () => {
     const { registerHandler } = useWebSocket();
+    const audioContextRef = useRef<AudioContext | null>(null);
 
     useEffect(() => {
-        // Register the handler for tts_audio
+        // Initialize AudioContext when the component mounts
+        const initAudioContext = () => {
+            if (!audioContextRef.current) {
+                audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('AudioContext initialized.');
+            }
+        };
+
+        // Function to play audio using AudioContext
+        const playAudio = async (audioBlob: Blob) => {
+            if (!audioContextRef.current) {
+                console.error('AudioContext not initialized.');
+                return;
+            }
+
+            try {
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                const decodedData = await audioContextRef.current.decodeAudioData(arrayBuffer);
+
+                const source = audioContextRef.current.createBufferSource();
+                source.buffer = decodedData;
+                source.connect(audioContextRef.current.destination);
+                source.start(0);
+
+                console.log('Audio playback started.');
+            } catch (err) {
+                console.error('Audio playback error:', err);
+            }
+        };
+
+        // Register the handler for TTS audio
         registerHandler('tts_audio', async (blob: Blob) => {
-            // console.log('Received raw TTS data (Blob).');
+            if (!audioContextRef.current) {
+                console.error('AudioContext is not initialized.');
+                return;
+            }
 
             // Convert Blob to ArrayBuffer
             const arrayBuffer = await blob.arrayBuffer();
@@ -26,17 +60,9 @@ const TTSService: React.FC = () => {
 
             try {
                 const metadata = JSON.parse(new TextDecoder().decode(metadataBuffer));
-                // console.log('Metadata:', metadata);
-
                 if (metadata.action === 'tts_audio') {
-                    // Process and play the audio
                     const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    const audio = new Audio(audioUrl);
-
-                    audio.play()
-                        .then(() => console.log('Audio playback started.'))
-                        .catch((err) => console.error('Audio playback error:', err));
+                    await playAudio(audioBlob);
                 } else {
                     console.warn('Unknown action:', metadata.action);
                 }
@@ -44,6 +70,18 @@ const TTSService: React.FC = () => {
                 console.error('Error parsing metadata:', err);
             }
         });
+
+        // Ensure AudioContext is initialized with a user interaction
+        document.body.addEventListener('click', initAudioContext);
+
+        return () => {
+            // Cleanup resources
+            if (audioContextRef.current) {
+                audioContextRef.current.close();
+                audioContextRef.current = null;
+            }
+            document.body.removeEventListener('click', initAudioContext);
+        };
     }, [registerHandler]);
 
     return null;

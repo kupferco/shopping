@@ -19,9 +19,10 @@ const app = express();
 // Check if running in production (Cloud Run) or development (localhost)
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 8080;
+const SERVER_END_POINT = 'https://b0c0-2a00-23c8-16b2-8301-f406-cdcd-4f20-3c3f.ngrok-free.app';
 
 let server;
-if (isProduction) {
+if (isProduction || true) {
     server = http.createServer(app);
 } else {
     const options = {
@@ -155,7 +156,7 @@ const sendAudioMessage = (socket, audioBuffer) => {
 // Helper function to call GEMINI API
 async function fetchGeminiResponse(text) {
     try {
-        const response = await fetch('https://proxy-server-14953211771.europe-west2.run.app/api/gemini', {
+        const response = await fetch(`${SERVER_END_POINT}/api/gemini`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ inputText: text }), // Properly format the body
@@ -178,7 +179,7 @@ async function fetchGeminiResponse(text) {
 // Helper function to call TTS API
 async function fetchTTSResponse(text) {
     try {
-        const response = await fetch('https://proxy-server-14953211771.europe-west2.run.app/api/tts', {
+        const response = await fetch(`${SERVER_END_POINT}/api/tts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text }),
