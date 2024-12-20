@@ -10,11 +10,11 @@ interface GoogleSpeechStreamProps {
         isMuted: () => boolean;
     }) => void;
     onMuteChange: (muted: boolean) => void;
+    onAudioStreamReady: (stream: MediaStream | null) => void;
 }
 
-const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, onReady, onMuteChange }) => {
+const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, onReady, onMuteChange, onAudioStreamReady }) => {
     const { sendMessage, registerHandler } = useWebSocket();
-
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioStreamRef = useRef<MediaStream | null>(null);
     const [muted, setMuted] = useState(false);
@@ -45,9 +45,11 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
             };
 
             mediaRecorder.start(250); // Send data every 250ms
+            onAudioStreamReady(audioStream); // Pass to parent
             console.log('Recording started.');
         } catch (error) {
             console.error('Failed to start recording:', error);
+            onAudioStreamReady(null); // Notify parent of failure
         }
     };
 

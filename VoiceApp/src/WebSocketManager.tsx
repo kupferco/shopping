@@ -24,7 +24,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             // console.log('WebSocket message received:', event.data);
         
             if (event.data instanceof Blob) {
-                console.log(`Action: tts_audio, Payload:`, event.data);
+                // console.log(`Action: tts_audio, Payload:`, event.data);
                 // Pass the raw blob to the registered handler
                 if (handlersRef.current['tts_audio']) {
                     handlersRef.current['tts_audio'](event.data);

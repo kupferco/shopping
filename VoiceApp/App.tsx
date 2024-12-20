@@ -8,6 +8,7 @@ const App: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
   const ttsRef = useRef<{ stop: () => void } | null>(null);
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
 
   const streamControls = useRef<{
     start: () => void;
@@ -16,6 +17,9 @@ const App: React.FC = () => {
     isMuted: () => boolean;
   } | null>(null);
 
+  const handleAudioStreamReady = (stream: MediaStream | null) => {
+      setAudioStream(stream);
+  };
   const handleReady = useCallback((controls: typeof streamControls.current) => {
     streamControls.current = controls;
   }, []);
@@ -91,8 +95,9 @@ const App: React.FC = () => {
           onTranscript={handleTranscript}
           onReady={handleReady}
           onMuteChange={handleMuteChange}
+          onAudioStreamReady={handleAudioStreamReady}
         />
-        <TTSService onReady={handleTTSReady} />
+        <TTSService audioStream={audioStream} onReady={handleTTSReady} />
       </div>
     </WebSocketProvider>
   );
