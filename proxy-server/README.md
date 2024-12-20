@@ -98,6 +98,22 @@ This will create two public URLs for testing:
 
 2. Use the public `ngrok` URLs to test the client and proxy from your mobile browser.
 
+3. Configure the ngrok.yml file
+```bash
+authtoken: <YOUR_NGROK_KEY>
+tunnels:
+  client:
+    proto: http
+    addr: 8081
+  proxy:
+    proto: http
+    addr: 8080
+```
+
+4. Then run all services
+```bash
+ngrok start --all --config ~/.ngrok/ngrok.yml
+```
 ---
 
 ## Docker Deployment

@@ -7,7 +7,7 @@ const App: React.FC = () => {
   const [transcript, setTranscript] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
-  const ttsRef = useRef<{ speak: (text: string) => void } | null>(null);
+  const ttsRef = useRef<{ stop: () => void } | null>(null);
 
   const streamControls = useRef<{
     start: () => void;
@@ -44,6 +44,7 @@ const App: React.FC = () => {
     if (streamControls.current) {
       streamControls.current.stop();
       setIsMicOn(false); // Set microphone state to off
+      handleStopTTS();
     } else {
       console.error('Stream controls are not initialized.');
     }
@@ -58,9 +59,18 @@ const App: React.FC = () => {
     }
   };
 
-  const handleTTSReady = (speak: (text: string) => void) => {
-    ttsRef.current = { speak };
+  const handleTTSReady = (controls: { stop: () => void }) => {
+    ttsRef.current = controls;
+};
+
+  const handleStopTTS = () => {
+    if (ttsRef.current) {
+      ttsRef.current.stop();
+    } else {
+      console.error('TTS controls are not initialized.');
+    }
   };
+
 
   return (
     <WebSocketProvider>
@@ -76,12 +86,13 @@ const App: React.FC = () => {
         <button onClick={handleMute} disabled={!isMicOn}>
           {isMuted ? 'Unmute' : 'Mute'}
         </button>
+        <button onClick={handleStopTTS} disabled={!isMicOn}>Interrrupt TTS</button>
         <GoogleSpeechStream
           onTranscript={handleTranscript}
           onReady={handleReady}
           onMuteChange={handleMuteChange}
         />
-        <TTSService />
+        <TTSService onReady={handleTTSReady} />
       </div>
     </WebSocketProvider>
   );
