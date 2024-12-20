@@ -142,6 +142,7 @@ It's possible to connfigure .env locally to switch off gemini api requests durin
 
 ```bash
 USE_MOCK_GEMINI=true
+```
 
 ```bash
 npm start
