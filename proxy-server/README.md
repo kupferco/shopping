@@ -134,7 +134,6 @@ Add `console.log` statements in key parts of the code to trace:
 
 ## Notes
 - Ensure your `GOOGLE_APPLICATION_CREDENTIALS` environment variable is set correctly when running locally or deploying.
-- Update `.env` or Cloud Run environment variables for production.
 
 ---
 

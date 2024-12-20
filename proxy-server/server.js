@@ -19,12 +19,17 @@ const app = express();
 // Check if running in production (Cloud Run) or development (localhost)
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 8080;
-const SERVER_END_POINT = 'https://b0c0-2a00-23c8-16b2-8301-f406-cdcd-4f20-3c3f.ngrok-free.app';
 
+let server_endpoint;
 let server;
-if (isProduction || true) {
+if (isProduction) {
     server = http.createServer(app);
+    server_endpoint = process.env.PROXY_SERVER_PRODUCTION;
+} else if (process.env.HTTPS_ROUTE === 'NGROK') {
+    server = http.createServer(app);
+    server_endpoint = process.env.PROXY_SERVER_NGROK;
 } else {
+    server_endpoint = process.env.PROXY_SERVER_DEVELOPMENT
     const options = {
         key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
         cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem')),
@@ -156,7 +161,7 @@ const sendAudioMessage = (socket, audioBuffer) => {
 // Helper function to call GEMINI API
 async function fetchGeminiResponse(text) {
     try {
-        const response = await fetch(`${SERVER_END_POINT}/api/gemini`, {
+        const response = await fetch(`${server_endpoint}/api/gemini`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ inputText: text }), // Properly format the body
@@ -179,7 +184,7 @@ async function fetchGeminiResponse(text) {
 // Helper function to call TTS API
 async function fetchTTSResponse(text) {
     try {
-        const response = await fetch(`${SERVER_END_POINT}/api/tts`, {
+        const response = await fetch(`${server_endpoint}/api/tts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text }),
@@ -220,6 +225,6 @@ async function fetchTTSResponse(text) {
 
 // Start the server
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Proxy server running on port https://localhost:${PORT}`);
+    console.log(`Proxy server running on port ${server_endpoint}`);
 });
 
