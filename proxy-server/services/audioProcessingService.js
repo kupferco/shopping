@@ -12,7 +12,7 @@ const streamingState = {
     isStreaming: false,
 };
 
-const startAudioProcessing = (socketId) => {
+const startAudioProcessing = (sessionId) => {
     if (streamingState.isStreaming) {
         console.log('Streaming already active. Ignoring start request.');
         return;
@@ -38,7 +38,7 @@ const startAudioProcessing = (socketId) => {
             console.log('Transcription:', transcript);
 
             // Emit the event with transcription data
-            eventEmitter.emit('transcription', { socketId, transcript, isFinal });
+            eventEmitter.emit('transcription', { sessionId, transcript, isFinal });
         })
         .on('error', (err) => {
             console.error('Google Streaming API error:', err);

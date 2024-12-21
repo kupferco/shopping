@@ -1,34 +1,51 @@
-require('dotenv').config();
+const { getHistory, addMessage, clearHistory } = require('../services/conversationHistoryService');
+const { getSystemPrompt, setSystemPrompt } = require('../services/conversationHistoryService');
 
-// Store the conversation history in memory (useful for keeping track during a session)
-let conversationHistory = [
-    {
-        role: 'system',
-        text: `You are a helpful and concise AI assistant. Your responses should be short, informative, and avoid unnecessary details.`,
-    },
-];
+async function handleGetSystemPrompt(req, res) {
+    const { sessionId } = req.query;
+    if (sessionId) {
+        try {
+            const prompt = getSystemPrompt(sessionId);
+            return res.json({ prompt: prompt });
+        } catch (error) {
+            return res.status(404).json({ error: 'No prompt found with this sessionId' });
+        }
+    } else {
+        return res.status(404).json({ error: 'Missing sessionId.' });
+    }
 
-// Function to clear the conversation history
-function clearHistory() {
-    conversationHistory = [
-        {
-            role: 'system',
-            text: `You are a helpful and concise AI assistant. Your responses should be short, informative, and avoid unnecessary details.`,
-        },
-    ];
+}
+async function updateSystemPrompt(req, res) {
+    const { sessionId, newPrompt } = req.body;
+
+    if (!sessionId || !newPrompt) {
+        return res.status(400).send('Session ID and new prompt are required.');
+    }
+
+    try {
+        setSystemPrompt(sessionId, newPrompt);
+        return res.json({ message: 'System prompt updated successfully.' });
+    } catch (error) {
+        console.error('Error updating system prompt:', error);
+        return res.status(500).send('Failed to update system prompt.');
+    }
 }
 
 async function handleGeminiRequest(req, res) {
-    const { inputText, clear } = req.body;
+    const { sessionId, inputText, clear } = req.body;
+
+    if (!sessionId) {
+        return res.status(400).send('Session ID is required.');
+    }
 
     if (clear) {
         // Clear the conversation history if requested
-        clearHistory();
-        return res.json({ message: 'Conversation history cleared.' });
+        clearHistory(sessionId);
+        return res.json({ message: `Conversation history cleared from ${sessionId}` });
     }
 
     // Add user input to conversation history
-    conversationHistory.push({ role: 'user', text: inputText });
+    addMessage(sessionId, { role: 'user', text: inputText });
 
     const useMockGemini = process.env.USE_MOCK_GEMINI === 'true';
 
@@ -38,7 +55,7 @@ async function handleGeminiRequest(req, res) {
         const mockResponse = `${inputText}`;
 
         // Add mock response to conversation history
-        conversationHistory.push({ role: 'assistant', text: mockResponse });
+        addMessage(sessionId, { role: 'assistant', text: mockResponse });
 
         // Simulate a random delay between 100 and 2000 ms
         const randomDelay = Math.floor(Math.random() * (2000 - 100 + 1)) + 100;
@@ -49,6 +66,7 @@ async function handleGeminiRequest(req, res) {
         // Real Gemini logic
         try {
             console.log('Calling real Gemini API...');
+            const conversationHistory = getHistory(sessionId);
             const payload = {
                 contents: [
                     {
@@ -73,7 +91,7 @@ async function handleGeminiRequest(req, res) {
             );
 
             if (!response.ok) {
-                console.error('Failed to fetch Gemini response:', response.statusText);
+                console.error('Failed to fetch Gemini response (geminiHandler):', response.statusText);
                 return res.status(response.status).send('Error communicating with Gemini API');
             }
 
@@ -81,7 +99,7 @@ async function handleGeminiRequest(req, res) {
             const aiResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No valid response from Gemini API.';
 
             // Add AI response to conversation history
-            conversationHistory.push({ role: 'assistant', text: aiResponse });
+            addMessage(sessionId, { role: 'assistant', text: aiResponse });
 
             return res.json({ response: aiResponse });
         } catch (err) {
@@ -92,8 +110,15 @@ async function handleGeminiRequest(req, res) {
 }
 
 async function handleGeminiHistoryRequest(req, res) {
+    const { sessionId } = req.query;
+
+    if (!sessionId) {
+        return res.status(400).send('Session ID is required.');
+    }
+
     try {
-        res.json(conversationHistory);
+        const history = getHistory(sessionId);
+        res.json(history);
     } catch (error) {
         console.error('Error fetching conversation history:', error);
         res.status(500).send('Error fetching conversation history');
@@ -103,5 +128,6 @@ async function handleGeminiHistoryRequest(req, res) {
 module.exports = {
     handleGeminiRequest,
     handleGeminiHistoryRequest,
-    clearHistory,
+    updateSystemPrompt,
+    handleGetSystemPrompt,
 };

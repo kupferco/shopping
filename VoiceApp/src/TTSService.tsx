@@ -152,7 +152,7 @@ const TTSService: React.FC<{
                 const isSpeech = avgVolume > 50; // Adjust based on testing
 
                 if (isSpeech) {
-                    console.log('Detected interrupting speech!!!!')
+                    console.log('Detected speech!!!!')
                     stopRef.current();
                 }
 

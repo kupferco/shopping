@@ -1,15 +1,15 @@
 const fetch = require('node-fetch');
 
-const fetchGeminiResponse = async (serverEndpoint, text) => {
+const fetchGeminiResponse = async (sessionId, serverEndpoint, text) => {
     try {
         const response = await fetch(`${serverEndpoint}/api/gemini`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ inputText: text }),
+            body: JSON.stringify({ sessionId, inputText: text }),
         });
-
+        
         if (!response.ok) {
-            console.error('Failed to fetch Gemini response:', response.statusText);
+            console.error('Failed to fetch Gemini response (service):', response.statusText);
             return null;
         }
 

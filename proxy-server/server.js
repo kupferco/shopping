@@ -1,22 +1,23 @@
 require('dotenv').config();
 const fs = require('fs');
 const express = require('express');
+const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const { startAudioProcessing,
     processAudioData,
-    stopGoogleStreaming,
-    stopAudioProcessing,
     eventEmitter } = require('./services/audioProcessingService');
 const { handleTTSRequest } = require('./routes/ttsHandler');
 const { startSTTStreaming } = require('./routes/sttHandler');
-const { handleGeminiRequest, handleGeminiHistoryRequest } = require('./routes/geminiHandler');
+const { handleGeminiRequest,
+    handleGeminiHistoryRequest,
+    updateSystemPrompt,
+    handleGetSystemPrompt } = require('./routes/geminiHandler');
 
 const { sendAudioMessage } = require('./utils/audioUtils');
 const { fetchTTSResponse } = require('./services/ttsService');
 const { fetchGeminiResponse } = require('./services/geminiService');
-
 
 const app = express();
 // Check if running in production (Cloud Run) or development (localhost)
@@ -25,14 +26,18 @@ const PORT = process.env.PORT || 8080;
 
 let serverEndpoint;
 let server;
+let clientURL;
 if (isProduction) {
     server = http.createServer(app);
     serverEndpoint = process.env.PROXY_SERVER_PRODUCTION;
+    clientURL = process.env.CLIENT_PRODUCTION;
 } else if (process.env.HTTPS_ROUTE === 'NGROK') {
     server = http.createServer(app);
     serverEndpoint = process.env.PROXY_SERVER_NGROK;
+    clientURL = process.env.CLIENT_DEVELOPMENT_NGROK;
 } else {
     serverEndpoint = process.env.PROXY_SERVER_DEVELOPMENT
+    clientURL = process.env.CLIENT_DEVELOPMENT_LOCAL;
     const options = {
         key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
         cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem')),
@@ -51,47 +56,85 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => res.send('Hello, World!'));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
+// Allow all origins for development; restrict in production
+// app.use(cors({
+//     origin: clientURL,
+//     methods: ['GET', 'POST', 'OPTIONS'], // Adjust allowed methods
+//     allowedHeaders: ['Content-Type', 'Authorization'], // Adjust headers as needed
+// }));
+app.use(cors());
+
+
+
 // API Endpoints
 app.post('/api/tts', handleTTSRequest);
 app.post('/api/stt', startSTTStreaming);
 app.post('/api/gemini', handleGeminiRequest);
+app.post('/api/gemini/system-prompt', updateSystemPrompt);
+app.get('/api/gemini/system-prompt', handleGetSystemPrompt);
 app.get('/api/gemini/history', handleGeminiHistoryRequest);
 
-// WebSocket Connections
+const isJSON = (message) => {
+    try {
+        JSON.parse(message);
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 wss.on('connection', (socket) => {
     console.log('Client connected.');
-    const socketId = Date.now(); // Unique identifier for the socket
-    activeSockets[socketId] = socket;
-
-    console.log('Client connected:', socketId);
 
     socket.on('message', (message) => {
-        try {
-            const parsedMessage = JSON.parse(message);
+        // Convert buffer to string
+        const messageString = message.toString();
 
-            if (parsedMessage.action === 'start_stt') {
-                console.log('Start action received.');
-                startAudioProcessing(socketId);
-            } else if (parsedMessage.action === 'stop_stt') {
-                console.log('Stop action received.');
-                stopGoogleStreaming();
+        // Check if the message is JSON
+        if (isJSON(messageString)) {
+            try {
+                const parsedMessage = JSON.parse(messageString);
+                console.log('Parsed WebSocket message:', parsedMessage);
+
+                // Handle JSON messages
+                if (parsedMessage.action === 'start_session') {
+                    const { sessionId } = parsedMessage;
+                    if (!sessionId) {
+                        console.error('Session ID is missing. Cannot start session.');
+                        return;
+                    }
+                    console.log(`Session started with ID: ${sessionId}`);
+                    activeSockets[sessionId] = socket; // Map sessionId to the WebSocket connection
+
+                    socket.on('close', () => {
+                        console.log(`Session closed for ID: ${sessionId}`);
+                        delete activeSockets[sessionId]; // Clean up on socket close
+                    });
+                } else if (parsedMessage.action === 'start_stt') {
+                    const { sessionId } = parsedMessage;
+                    if (!sessionId || !activeSockets[sessionId]) {
+                        console.error('Session ID is missing or invalid. Cannot start STT.');
+                        return;
+                    }
+                    console.log(`Start STT action received for session ID: ${sessionId}`);
+                    startAudioProcessing(sessionId);
+                }
+            } catch (error) {
+                console.error('Error processing WebSocket JSON message:', error.message);
             }
-        } catch (error) {
-            // If the message isn't JSON, treat it as raw audio data
-            // console.log(message)
-            processAudioData(message);
+        } else {
+            // console.log('Received binary data.');
+            processAudioData(message); // Handle binary data
         }
-    });
-
-    socket.on('close', () => {
-        console.log('Client disconnected. Cleaning up resources.');
-        stopAudioProcessing();
     });
 });
 
+
+
+
 // Listen for transcription events
-eventEmitter.on('transcription', async ({ socketId, transcript, isFinal }) => {
-    const socket = activeSockets[socketId];
+eventEmitter.on('transcription', async ({ sessionId, transcript, isFinal }) => {
+    const socket = activeSockets[sessionId];
     if (!socket) return;
 
     // Send transcription to the client
@@ -108,10 +151,10 @@ eventEmitter.on('transcription', async ({ socketId, transcript, isFinal }) => {
 
         try {
             // Call the Gemini service for a response
-            const geminiData = await fetchGeminiResponse(serverEndpoint, transcript);
+            const geminiData = await fetchGeminiResponse(sessionId, serverEndpoint, transcript);
 
             if (!geminiData) {
-                console.error('Failed to fetch Gemini response.');
+                console.error('Failed to fetch Gemini response (server).');
                 return;
             }
 
