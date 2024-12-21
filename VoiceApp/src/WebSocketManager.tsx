@@ -1,4 +1,5 @@
 import React, { createContext, useRef, useEffect, useCallback } from 'react';
+import { getSessionId } from './sessionManager';
 
 interface WebSocketContextProps {
     sendMessage: (message: any) => void;
@@ -10,19 +11,26 @@ const WebSocketContext = createContext<WebSocketContextProps | null>(null);
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const wsRef = useRef<WebSocket | null>(null);
     const handlersRef = useRef<{ [action: string]: (data: any) => void }>({});
+    const sessionId = getSessionId();
 
     useEffect(() => {
         // const WEBSOCKET_ADDRESS = 'wss://192.168.1.105:8080';
         // const WEBSOCKET_ADDRESS = 'wss://127.0.0.1:8080';
         // const WEBSOCKET_ADDRESS = 'wss://localhost:8080';
         // const WEBSOCKET_ADDRESS = 'wss://proxy-server-14953211771.europe-west2.run.app/';
-        const WEBSOCKET_ADDRESS = 'wss://ab48-2a00-23c8-16b2-8301-b4ba-6b2a-34a2-ca6a.ngrok-free.app/';
+        const WEBSOCKET_ADDRESS = 'wss://e7e2-2a00-23c8-16b2-8301-b4ba-6b2a-34a2-ca6a.ngrok-free.app/';
         wsRef.current = new WebSocket(WEBSOCKET_ADDRESS);
 
-        wsRef.current.onopen = () => console.log('WebSocket connected.');
+        wsRef.current.onopen = () => {
+            console.log('WebSocket connected.');
+            // Send sessionId as the first message
+            if (sessionId) {
+                wsRef.current?.send(JSON.stringify({ action: 'start_session', sessionId }));
+            }
+        }
         wsRef.current.onmessage = async (event) => {
             // console.log('WebSocket message received:', event.data);
-        
+
             if (event.data instanceof Blob) {
                 // console.log(`Action: tts_audio, Payload:`, event.data);
                 // Pass the raw blob to the registered handler
@@ -34,7 +42,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 try {
                     const { action, payload } = JSON.parse(event.data);
                     console.log(`Action: ${action}, Payload:`, payload);
-        
+
                     if (handlersRef.current[action]) {
                         handlersRef.current[action](payload);
                     }
@@ -44,7 +52,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             } else {
                 console.warn('Unexpected WebSocket message type:', typeof event.data);
             }
-        };        
+        };
 
         wsRef.current.onerror = (error) => console.error('WebSocket error:', error);
         wsRef.current.onclose = () => console.log('WebSocket disconnected.');
@@ -52,14 +60,25 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return () => wsRef.current?.close();
     }, []);
 
+    // const sendMessage = useCallback((message: any) => {
+    //     if (wsRef.current?.readyState === WebSocket.OPEN) {
+    //         wsRef.current.send(message?.payload || JSON.stringify(message));
+    //     } else {
+    //         console.error('WebSocket is not open.');
+    //     }
+    // }, [sessionId]);
+
     const sendMessage = useCallback((message: any) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(message?.payload || JSON.stringify(message));
+            const messageWithSession = {
+                ...message,
+                sessionId, // Include sessionId in every message
+            };
+            wsRef.current.send(message?.payload || JSON.stringify(messageWithSession));
         } else {
             console.error('WebSocket is not open.');
         }
-    }, []);
-
+    }, [sessionId]);
 
     const registerHandler = useCallback((action: string, handler: (data: any) => void) => {
         handlersRef.current[action] = handler;
