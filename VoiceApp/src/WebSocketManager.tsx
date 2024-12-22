@@ -1,5 +1,6 @@
 import React, { createContext, useRef, useEffect, useCallback } from 'react';
 import { getSessionId } from './sessionManager';
+import { API_URL } from '@env';
 
 interface WebSocketContextProps {
     sendMessage: (message: any) => void;
@@ -14,11 +15,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const sessionId = getSessionId();
 
     useEffect(() => {
-        // const WEBSOCKET_ADDRESS = 'wss://192.168.1.105:8080';
-        // const WEBSOCKET_ADDRESS = 'wss://127.0.0.1:8080';
-        // const WEBSOCKET_ADDRESS = 'wss://localhost:8080';
-        // const WEBSOCKET_ADDRESS = 'wss://proxy-server-14953211771.europe-west2.run.app/';
-        const WEBSOCKET_ADDRESS = 'wss://e7e2-2a00-23c8-16b2-8301-b4ba-6b2a-34a2-ca6a.ngrok-free.app/';
+        const WEBSOCKET_ADDRESS = `${API_URL.replace(/^https/, 'wss')}`;
         wsRef.current = new WebSocket(WEBSOCKET_ADDRESS);
 
         wsRef.current.onopen = () => {

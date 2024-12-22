@@ -85,6 +85,11 @@ Start both tunnels defined in your `ngrok.yml` file:
 ngrok start --all
 ```
 
+Or point directly to the config file by using the following command
+```bash
+ngrok start --all --config ~/.ngrok/ngrok.yml
+```
+
 This will create two public URLs for testing:
 - **Client:** Accessible at the public URL for `client` (e.g., `http://abc123.ngrok.io`).
 - **Proxy:** Accessible at the public URL for `proxy` (e.g., `https://xyz456.ngrok.io`).

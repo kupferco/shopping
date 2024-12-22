@@ -3,6 +3,10 @@ import { initializeSession, clearSessionId } from './src/sessionManager';
 import { WebSocketProvider } from './src/WebSocketManager';
 import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 import TTSService from './src/TTSService';
+import { API_URL } from '@env';
+
+console.log('API URL:', API_URL);
+
 
 const App: React.FC = () => {
   const [transcript, setTranscript] = useState('');
@@ -29,7 +33,7 @@ const App: React.FC = () => {
     const fetchPrompt = async () => {
       if (!sessionId) return;
       try {
-        const response = await fetch(`https://e7e2-2a00-23c8-16b2-8301-b4ba-6b2a-34a2-ca6a.ngrok-free.app/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`, {
+        const response = await fetch(`${API_URL}/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -124,7 +128,7 @@ const App: React.FC = () => {
     }
 
     try {
-      const response = await fetch('https://e7e2-2a00-23c8-16b2-8301-b4ba-6b2a-34a2-ca6a.ngrok-free.app/api/gemini/system-prompt', {
+      const response = await fetch(`${API_URL}/api/gemini/system-prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, newPrompt: prompt }),

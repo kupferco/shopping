@@ -24,6 +24,7 @@
     "@babel/core": "^7.20.0",
     "@types/react": "^18.3.16",
     "@types/react-native": "^0.72.8",
+    "react-native-dotenv": "^3.4.11",
     "typescript": "^5.7.2"
   },
   "private": true
