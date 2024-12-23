@@ -48,6 +48,8 @@ const App: React.FC = () => {
 
         const data = await response.json();
         setPrompt(data.prompt || '');
+        console.log('Conversation history',`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}`);
+        console.log('Session prompt',`${API_URL}/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`);
         // }, 1000)
       } catch (error) {
         console.error('Error fetching system prompt:', error);

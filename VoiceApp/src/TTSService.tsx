@@ -35,33 +35,39 @@ const TTSService: React.FC<{
                 initAudioContext(); // Try to initialize again
                 return; // Skip playback until initialized
             }
-
+        
             try {
                 const arrayBuffer = await audioBlob.arrayBuffer();
                 const decodedData = await audioContextRef.current.decodeAudioData(arrayBuffer);
-
+        
                 // Stop any current playback before starting a new one
                 if (sourceNodeRef.current) {
-                    sourceNodeRef.current.stop();
+                    console.log('Stopping current playback before starting new audio.');
+                    sourceNodeRef.current.stop(0);
+                    sourceNodeRef.current.disconnect();
                     sourceNodeRef.current = null;
-                }
+                } else {
+                    console.log('No sourceNodeRef.current', sourceNodeRef.current);
 
+                }
+        
                 const source = audioContextRef.current.createBufferSource();
                 source.buffer = decodedData;
                 source.connect(audioContextRef.current.destination);
                 source.start(0);
-
+        
                 console.log('Audio playback started.');
                 sourceNodeRef.current = source;
-
+        
                 source.onended = () => {
                     console.log('Audio playback ended.');
-                    sourceNodeRef.current = null;
+                    // sourceNodeRef.current = null;
                 };
             } catch (err) {
                 console.error('Audio playback error:', err);
             }
         };
+        
 
         // Expose stop method
         const stop = () => {
@@ -103,6 +109,7 @@ const TTSService: React.FC<{
                 const metadata = JSON.parse(new TextDecoder().decode(metadataBuffer));
                 if (metadata.action === 'tts_audio') {
                     const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+                    console.log('PLAY TTS!!!')
                     await playAudio(audioBlob);
                 } else {
                     console.warn('Unknown action:', metadata.action);
