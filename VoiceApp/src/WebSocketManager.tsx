@@ -67,15 +67,17 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const sendMessage = useCallback((message: any) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
+            // For JSON messages, include sessionId as a property
             const messageWithSession = {
                 ...message,
-                sessionId, // Include sessionId in every message
+                sessionId, // Include sessionId in every JSON message
             };
-            wsRef.current.send(message?.payload || JSON.stringify(messageWithSession));
+            wsRef.current.send(JSON.stringify(messageWithSession));
         } else {
             console.error('WebSocket is not open.');
         }
     }, [sessionId]);
+    
 
     const registerHandler = useCallback((action: string, handler: (data: any) => void) => {
         handlersRef.current[action] = handler;

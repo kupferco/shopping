@@ -39,8 +39,20 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
 
             mediaRecorder.ondataavailable = (event) => {
                 if (!mutedRef.current) {
-                    // console.log('Sending audio data to WebSocket.');
-                    sendMessage({ action: 'stt_audio', payload: event.data });
+                    // Convert the audio Blob to Base64
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        if (reader.result) {
+                            const base64Audio = (reader.result as string).split(',')[1]; // Get base64 content
+                            sendMessage({ action: 'stt_audio', audioData: base64Audio });
+                        } else {
+                            console.error('Failed to read audio data.');
+                        }
+                    };
+                    reader.onerror = () => {
+                        console.error('Error reading audio data:', reader.error);
+                    };
+                    reader.readAsDataURL(event.data); // Read Blob as DataURL
                 }
             };
 
