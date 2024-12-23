@@ -16,9 +16,11 @@ const fetchNgrokUrls = async (retries = 5, delay = 2000) => {
       const data = await response.json();
       const tunnels = data.tunnels;
 
-      if (tunnels.length >= 2) {
-        const clientTunnel = tunnels[0].public_url; // First tunnel for client
-        const proxyTunnel = tunnels[1].public_url; // Second tunnel for proxy
+      // Identify tunnels by name
+      const clientTunnel = tunnels.find(tunnel => tunnel.name === 'client')?.public_url;
+      const proxyTunnel = tunnels.find(tunnel => tunnel.name === 'proxy')?.public_url;
+
+      if (clientTunnel && proxyTunnel) {
         return { clientTunnel, proxyTunnel };
       }
 
@@ -30,8 +32,9 @@ const fetchNgrokUrls = async (retries = 5, delay = 2000) => {
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
-  throw new Error('Failed to find two ngrok tunnels after retries.');
+  throw new Error('Failed to find two named ngrok tunnels after retries.');
 };
+
 
 // Function to update a .env file
 function updateEnvFile(filePath, placeholder, newValue) {
