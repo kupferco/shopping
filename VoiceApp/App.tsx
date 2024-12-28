@@ -1,9 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { initializeSession, renewSessionId, clearSessionId } from './src/SessionManager';
+import { initializeSession, renewSessionId } from './src/SessionManager';
 import { useWebSocket } from './src/WebSocketManager';
 import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 import TTSService from './src/TTSService';
 import { API_URL, NODE_ENV } from '@env';
+import { fetchHistory, fetchPrompt, savePrompt, clearHistory } from './src/PromptService';
+import TextConversation from './src/TextConversation';
 
 console.log(`Environment: ${NODE_ENV}`);
 console.log(`API URL: ${API_URL}`);
@@ -15,7 +17,8 @@ const App: React.FC = () => {
   const ttsRef = useRef<{ stop: () => void } | null>(null);
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState(''); // State for the input field
+  const [prompt, setPrompt] = useState('');
+  const [conversationHistory, setConversationHistory] = useState<{ role: string; text: string }[]>([]);
 
   const streamControls = useRef<{
     start: () => void;
@@ -24,101 +27,108 @@ const App: React.FC = () => {
     isMuted: () => boolean;
   } | null>(null);
 
-  const { restartSession } = useWebSocket(); // Use restartSession from WebSocketManager
+  const { restartSession, registerHandler } = useWebSocket();
+
+  // Reusable method to refresh history
+  const refreshHistory = useCallback(async () => {
+    if (!sessionId) {
+      console.warn("No session ID available to refresh history.");
+      return;
+    }
+
+    try {
+      const history = await fetchHistory(sessionId);
+      console.log("Fetched conversation history:", history);
+      setConversationHistory(history);
+    } catch (error) {
+      console.error("Error fetching conversation history:", error);
+    }
+  }, [sessionId]);
 
   useEffect(() => {
-    // Initialize the session
-    const id = initializeSession();
-    setSessionId(id);
+    const initSession = async () => {
+      const id = initializeSession();
+      setSessionId(id);
 
-    
-    // Fetch the existing system prompt for the session
-    const fetchPrompt = async () => {
-      if (!sessionId) return;
-      console.log(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}`)
-      try {
-        const response = await fetch(`${API_URL}/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true', // Bypass the Ngrok intro page
-          },
-        });
-
-        if (!response.ok) {
-          console.error('Failed to fetch system prompt.');
-          return;
-        }
-
-        const data = await response.json();
-        setPrompt(data.prompt || '');
-      } catch (error) {
-        console.error('Error fetching system prompt:', error);
+      if (id) {
+        await refreshHistory(); // Use reusable method
+        fetchPrompt(id, setPrompt);
       }
     };
 
-    if (id) fetchPrompt();
-  }, [sessionId]);
+    initSession();
+  }, [refreshHistory]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const handleGeminiResponse = async () => {
+      await refreshHistory(); // Use reusable method
+    };
+
+    registerHandler('gemini', handleGeminiResponse);
+
+    return () => {
+      registerHandler('gemini', () => {}); // Unregister the handler
+    };
+  }, [sessionId, registerHandler, refreshHistory]);
 
   const handleClearHistory = async () => {
-    if (!sessionId) {
-        console.error('No active session to clear history.');
-        return;
+    if (sessionId) {
+      await clearHistory(sessionId);
+      setConversationHistory([]); // Clear UI conversation
     }
-    try {
-        const response = await fetch(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}&clear=true`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true',
-            },
-        });
-
-        if (!response.ok) {
-            console.error('Failed to clear conversation history.');
-            return;
-        }
-
-        const result = await response.json();
-        console.log(result.message || 'Conversation history cleared.');
-    } catch (error) {
-        console.error('Error clearing conversation history:', error);
-    }
-};
-
+  };
 
   const handleRenewSession = () => {
     const newSessionId = renewSessionId();
     setSessionId(newSessionId);
     console.log('Session renewed with new ID:', newSessionId);
-
-    // Restart WebSocket session
     restartSession();
   };
 
-  const handleAudioStreamReady = (stream: MediaStream | null) => {
-    setAudioStream(stream);
-  };
+  const handleTranscript = useCallback(
+    async (newTranscript: string, isFinal: boolean) => {
+      console.log("handleTranscript triggered");
+      console.log("Session ID:", sessionId);
 
-  const handleReady = useCallback((controls: typeof streamControls.current) => {
-    streamControls.current = controls;
-  }, []);
+      if (!sessionId) {
+        console.warn("Session ID is missing, skipping handleTranscript.");
+        return;
+      }
 
-  const handleTranscript = useCallback((newTranscript: string, isFinal: boolean) => {
-    if (isFinal || true) {
-      console.log(newTranscript);
-      setTranscript((prev) => `${prev} ${newTranscript}`);
-    }
-  }, []);
+      if (isFinal || true) {
+        console.log("Transcript received:", newTranscript);
+
+        // Add the user's message to the conversation history
+        setConversationHistory((prev) => [
+          ...prev,
+          { role: "user", text: newTranscript },
+          { role: "assistant", text: "Loading..." }, // Placeholder for agent's response
+        ]);
+
+        await refreshHistory(); // Use reusable method
+      }
+    },
+    [sessionId, refreshHistory]
+  );
 
   const handleMuteChange = useCallback((muted: boolean) => {
     setIsMuted(muted);
   }, []);
 
+  const handleReady = useCallback((controls: typeof streamControls.current) => {
+    streamControls.current = controls;
+  }, []);
+
+  const handleAudioStreamReady = (stream: MediaStream | null) => {
+    setAudioStream(stream);
+  };
+
   const handleStart = () => {
     if (streamControls.current) {
       streamControls.current.start();
-      setIsMicOn(true); // Set microphone state to on
+      setIsMicOn(true);
     } else {
       console.error('Stream controls are not initialized.');
     }
@@ -127,7 +137,7 @@ const App: React.FC = () => {
   const handleStop = () => {
     if (streamControls.current) {
       streamControls.current.stop();
-      setIsMicOn(false); // Set microphone state to off
+      setIsMicOn(false);
       handleStopTTS();
     } else {
       console.error('Stream controls are not initialized.');
@@ -155,75 +165,36 @@ const App: React.FC = () => {
     }
   };
 
-  const savePrompt = async () => {
-    if (!prompt.trim()) {
-      alert('System prompt cannot be empty.');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_URL}/api/gemini/system-prompt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, newPrompt: prompt }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Failed to update system prompt:', errorText);
-        alert('Error updating system prompt. Check logs for details.');
-        return;
-      }
-
-      const result = await response.json();
-      alert(result.message); // Success message
-    } catch (error) {
-      console.error('Error updating system prompt:', error);
-      alert('An error occurred while updating the system prompt.');
-    }
-  };
-
   return (
-    <div>
-      <div>
-        <h1>Welcome to the Voice App</h1>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <div style={{ padding: '10px', borderBottom: '1px solid #ccc', position: 'sticky', top: 0, background: '#fff', zIndex: 100 }}>
         <p>Your session ID: {sessionId || 'No active session'}</p>
-        <button
-          onClick={handleClearHistory}
-          >Clear conversation history</button>
-        <button
-          onClick={handleRenewSession}
-          disabled={isMicOn}>Renew session</button>
-        <div>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Enter new system prompt"
-            style={{ width: '100%', height: '50px' }}
-          />
-          <button
-            onClick={savePrompt}
-            disabled={isMicOn}>Save instruction prompt</button>
-        </div>
-        <p>Transcript: {transcript}</p>
-        <button onClick={handleStart} disabled={isMicOn}>
-          Start
-        </button>
-        <button onClick={handleStop} disabled={!isMicOn}>
-          Stop
-        </button>
-        <button onClick={handleMute} disabled={!isMicOn}>
-          {isMuted ? 'Unmute' : 'Mute'}
-        </button>
-        <button onClick={handleStopTTS} disabled={!isMicOn}>Interrrupt TTS</button>
-        <GoogleSpeechStream
-          onTranscript={handleTranscript}
-          onReady={handleReady}
-          onMuteChange={handleMuteChange}
-          onAudioStreamReady={handleAudioStreamReady}
+        <button onClick={handleClearHistory}>Clear conversation history</button>
+        <button onClick={handleRenewSession} disabled={isMicOn}>Renew session</button>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Enter new system prompt"
+          style={{ width: '100%', height: '50px', marginBottom: '5px' }}
         />
-        <TTSService audioStream={audioStream} onReady={handleTTSReady} />
+        <button onClick={() => savePrompt(prompt, sessionId)} disabled={isMicOn}>Save instruction prompt</button>
+        <br /><br />
+        <button onClick={handleStart} disabled={isMicOn}>Start</button>
+        <button onClick={handleStop} disabled={!isMicOn}>Stop</button>
+        <button onClick={handleMute} disabled={!isMicOn}>{isMuted ? 'Unmute' : 'Mute'}</button>
+        <button onClick={handleStopTTS} disabled={!isMicOn}>Interrupt TTS</button>
       </div>
+      <TextConversation
+        sessionId={sessionId}
+        history={conversationHistory}
+      />
+      <GoogleSpeechStream
+        onTranscript={handleTranscript}
+        onReady={handleReady}
+        onMuteChange={handleMuteChange}
+        onAudioStreamReady={handleAudioStreamReady}
+      />
+      <TTSService audioStream={audioStream} onReady={handleTTSReady} />
     </div>
   );
 };

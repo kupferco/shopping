@@ -73,10 +73,10 @@ voiceapp/
 ├── node_modules/         # Dependencies
 ├── src/                  # Source code
 │   ├── GoogleSpeechStreamer.tsx
+│   ├── PromptService.ts
 │   ├── SessionManager.js
 │   ├── TTSService.tsx
 │   ├── WebSocketManager.tsx
-├── .env                  # Environment variables
 ├── .env.development      # Development environment variables
 ├── .env.production       # Production environment variables
 ├── package.json          # Project metadata and scripts
