@@ -1,11 +1,12 @@
 // App.tsx
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { initializeSession, renewSessionId, clearSessionId } from './src/SessionManager';
+import { initializeSession, renewSessionId } from './src/SessionManager';
 import { useWebSocket } from './src/WebSocketManager';
 import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 import TTSService from './src/TTSService';
 import { API_URL, NODE_ENV } from '@env';
 import { fetchPrompt, savePrompt, clearHistory } from './src/PromptService';
+import TextConversation from './src/TextConversation';
 
 console.log(`Environment: ${NODE_ENV}`);
 console.log(`API URL: ${API_URL}`);
@@ -17,7 +18,7 @@ const App: React.FC = () => {
   const ttsRef = useRef<{ stop: () => void } | null>(null);
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState(''); // State for the input field
+  const [prompt, setPrompt] = useState('');
 
   const streamControls = useRef<{
     start: () => void;
@@ -26,17 +27,16 @@ const App: React.FC = () => {
     isMuted: () => boolean;
   } | null>(null);
 
-  const { restartSession } = useWebSocket(); // Use restartSession from WebSocketManager
+  const { restartSession } = useWebSocket();
 
   useEffect(() => {
-    // Initialize the session
     const id = initializeSession();
     setSessionId(id);
 
     if (id) {
       fetchPrompt(id, setPrompt);
     }
-  }, [sessionId]);
+  }, []);
 
   const handleClearHistory = async () => {
     if (sessionId) {
@@ -50,8 +50,6 @@ const App: React.FC = () => {
     const newSessionId = renewSessionId();
     setSessionId(newSessionId);
     console.log('Session renewed with new ID:', newSessionId);
-
-    // Restart WebSocket session
     restartSession();
   };
 
@@ -77,7 +75,7 @@ const App: React.FC = () => {
   const handleStart = () => {
     if (streamControls.current) {
       streamControls.current.start();
-      setIsMicOn(true); // Set microphone state to on
+      setIsMicOn(true);
     } else {
       console.error('Stream controls are not initialized.');
     }
@@ -86,7 +84,7 @@ const App: React.FC = () => {
   const handleStop = () => {
     if (streamControls.current) {
       streamControls.current.stop();
-      setIsMicOn(false); // Set microphone state to off
+      setIsMicOn(false);
       handleStopTTS();
     } else {
       console.error('Stream controls are not initialized.');
@@ -115,46 +113,32 @@ const App: React.FC = () => {
   };
 
   return (
-    <div>
-      <div>
-        <h1>Welcome to the Voice App</h1>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <div style={{ padding: '10px', borderBottom: '1px solid #ccc', position: 'sticky', top: 0, background: '#fff', zIndex: 100 }}>
         <p>Your session ID: {sessionId || 'No active session'}</p>
-        <button
-          onClick={handleClearHistory}
-          >Clear conversation history</button>
-        <button
-          onClick={handleRenewSession}
-          disabled={isMicOn}>Renew session</button>
-        <div>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Enter new system prompt"
-            style={{ width: '100%', height: '50px' }}
-          />
-          <button
-            onClick={() => savePrompt(prompt, sessionId)}
-            disabled={isMicOn}>Save instruction prompt</button>
-        </div>
-        <p>Transcript: {transcript}</p>
-        <button onClick={handleStart} disabled={isMicOn}>
-          Start
-        </button>
-        <button onClick={handleStop} disabled={!isMicOn}>
-          Stop
-        </button>
-        <button onClick={handleMute} disabled={!isMicOn}>
-          {isMuted ? 'Unmute' : 'Mute'}
-        </button>
-        <button onClick={handleStopTTS} disabled={!isMicOn}>Interrrupt TTS</button>
-        <GoogleSpeechStream
-          onTranscript={handleTranscript}
-          onReady={handleReady}
-          onMuteChange={handleMuteChange}
-          onAudioStreamReady={handleAudioStreamReady}
+        <button onClick={handleClearHistory}>Clear conversation history</button>
+        <button onClick={handleRenewSession} disabled={isMicOn}>Renew session</button>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder="Enter new system prompt"
+          style={{ width: '100%', height: '50px', marginBottom: '5px' }}
         />
-        <TTSService audioStream={audioStream} onReady={handleTTSReady} />
+        <button onClick={() => savePrompt(prompt, sessionId)} disabled={isMicOn}>Save instruction prompt</button>
+        <br/><br/>
+        <button onClick={handleStart} disabled={isMicOn}>Start</button>
+        <button onClick={handleStop} disabled={!isMicOn}>Stop</button>
+        <button onClick={handleMute} disabled={!isMicOn}>{isMuted ? 'Unmute' : 'Mute'}</button>
+        <button onClick={handleStopTTS} disabled={!isMicOn}>Interrupt TTS</button>
       </div>
+      <TextConversation sessionId={sessionId} />
+      <GoogleSpeechStream
+        onTranscript={handleTranscript}
+        onReady={handleReady}
+        onMuteChange={handleMuteChange}
+        onAudioStreamReady={handleAudioStreamReady}
+      />
+      <TTSService audioStream={audioStream} onReady={handleTTSReady} />
     </div>
   );
 };
