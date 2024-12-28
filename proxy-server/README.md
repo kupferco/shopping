@@ -1,179 +1,147 @@
-# Proxy Server for Speech-to-Text and Text-to-Speech
+# Proxy Server for Voice App Exploration
 
-This project enables speech-to-text (STT) and text-to-speech (TTS) processing using WebSocket connections and Google APIs. Below are the setup, deployment, and debugging instructions.
+This document outlines the services and endpoints provided by the proxy server for handling Speech-to-Text (STT), Gemini, and Text-to-Speech (TTS) processing. The server is designed to be robust and scalable for conversational app development.
+
+---
+
+## Features
+
+- **WebSocket Communication** for real-time audio processing.
+- **RESTful API** endpoints for managing system prompts and conversation history.
+- Integration with **Google STT and TTS APIs**.
+- Gemini API integration for generating conversational responses.
 
 ---
 
 ## Endpoints
 
 ### General Endpoints
-- **`GET /`**: Returns a simple greeting message ("Hello, World!").
+- **`GET /`**: Returns a greeting message ("Hello, World!").
 - **`GET /health`**: Returns `OK` if the server is running.
 
 ### API Endpoints
 - **`POST /api/tts`**: Handles text-to-speech requests.
-- **`POST /api/stt`**: Handles speech-to-text requests via HTTP (currently unused).
-- **`POST /api/gemini`**: Sends user input to the Gemini API and retrieves a response.
-- **`GET /api/gemini/history`**: Retrieves the conversation history.
+- **`POST /api/stt`**: Handles speech-to-text requests via HTTP (currently unused in favor of WebSocket).
+- **`POST /api/gemini`**: Sends user input to the Gemini API and retrieves a response. Optionally clears conversation history when `clear: true` is passed.
+- **`GET /api/gemini/history`**: Retrieves the conversation history for a given session.
+- **`POST /api/gemini/system-prompt`**: Updates the system prompt for a session.
+- **`GET /api/gemini/system-prompt`**: Retrieves the current system prompt for a session.
 
 ---
 
-## Prerequisites
+## Conversation History Management
 
-- Node.js (v16+)
-- Docker
-- Google Cloud SDK (`gcloud` CLI)
-- FFmpeg installed locally
+The server maintains a conversation history for each session, which includes exchanges between the user and the assistant. This history can be managed using the following strategies:
 
----
+### Clearing History
+- Use the `clear: true` flag in the **`POST /api/gemini`** endpoint to reset the conversation history for the session, retaining only the initial system prompt.
+- Alternatively, use **`GET /api/gemini/history?clear=true`** to achieve the same result.
 
-## Getting Started
+### Updating History
+- The history is automatically updated with each user message and assistant response.
 
-### Install Dependencies
-```bash
-npm install
-
-```
-
-### Run Locally
-#### Using `nodemon` (auto-restarts on changes):
-```bash
-nodemon server.js
-```
-
-#### Regular Start:
-```bash
-npm start
-```
-
-The server runs by default on `https://localhost:8080`.
+### Retrieving History
+- Use **`GET /api/gemini/history`** to fetch the current conversation history for a session.
 
 ---
 
-## Testing Locally with `ngrok`
-
-To test locally on a mobile device or external network using `ngrok`, follow these steps:
+## Deployment and Local Testing
 
 ### Prerequisites
 
-1. Install `ngrok`: 
-   ```bash
-   npm install -g ngrok
-   ```
+- **Node.js** (v18+ recommended)
+- **FFmpeg** (for audio processing)
+- **Google Cloud SDK** (for deployment)
+- **Ngrok** (for local testing)
 
-2. Set up an `ngrok.yml` configuration file:
+### Local Setup
 
-   Create the file `~/.ngrok/ngrok.yml` (if it doesn’t already exist):
-   ```yaml
-   version: "2"
-   authtoken: YOUR_NGROK_AUTH_TOKEN
-   tunnels:
-     client:
-       proto: http
-       addr: 8081
-     proxy:
-       proto: https
-       addr: 8080
-   ```
+1. **Install Dependencies**:
+    ```bash
+    npm install
+    cd proxy-server && npm install
+    ```
 
-   Replace `YOUR_NGROK_AUTH_TOKEN` with your actual token from the [ngrok dashboard](https://dashboard.ngrok.com/get-started/your-authtoken).
+2. **Run Locally**:
+    ```bash
+    nodemon server.js
+    ```
 
-### Run `ngrok` Tunnels
+3. **Using Ngrok**:
+    - Configure `~/.ngrok/ngrok.yml`:
+      ```yaml
+      authtoken: YOUR_NGROK_AUTH_TOKEN
+      tunnels:
+        proxy:
+          proto: https
+          addr: 8080
+      ```
+    - Start ngrok:
+      ```bash
+      ngrok start --all --config ~/.ngrok/ngrok.yml
+      ```
 
-Start both tunnels defined in your `ngrok.yml` file:
-```bash
-ngrok start --all
-```
+4. **Environment Variables**:
+    Ensure `.env` is configured with:
+    ```
+    API_KEY=<Your Google API Key>
+    NODE_ENV=development
+    USE_MOCK_GEMINI=true
+    ```
 
-Or point directly to the config file by using the following command
-```bash
-ngrok start --all --config ~/.ngrok/ngrok.yml
-```
+### Docker Deployment
 
-This will create two public URLs for testing:
-- **Client:** Accessible at the public URL for `client` (e.g., `http://abc123.ngrok.io`).
-- **Proxy:** Accessible at the public URL for `proxy` (e.g., `https://xyz456.ngrok.io`).
+1. **Build Image**:
+    ```bash
+    docker build -t gcr.io/bot-exploration/proxy-server:latest .
+    ```
 
-### Update Client and Proxy Configurations
+2. **Push to GCR**:
+    ```bash
+    docker push gcr.io/bot-exploration/proxy-server:latest
+    ```
 
-1. Replace `localhost` references in the client configuration with the `ngrok` public URL for the client.
-   ```javascript
-   const socket = new WebSocket('wss://xyz456.ngrok.io');
-   ```
-
-2. Use the public `ngrok` URLs to test the client and proxy from your mobile browser.
-
-3. Configure the ngrok.yml file
-```bash
-authtoken: <YOUR_NGROK_KEY>
-tunnels:
-  client:
-    proto: http
-    addr: 8081
-  proxy:
-    proto: http
-    addr: 8080
-```
-
-4. Then run all services
-```bash
-ngrok start --all --config ~/.ngrok/ngrok.yml
-```
----
-
-## Docker Deployment
-
-### Build the Docker Image
-```bash
-docker build -t gcr.io/bot-exploration/proxy-server:latest .
-```
-
-### Push the Docker Image to Google Container Registry (GCR)
-```bash
-docker push gcr.io/bot-exploration/proxy-server:latest
-```
-
-### Deploy to Google Cloud Run
-```bash
-gcloud run deploy proxy-server \
-    --image=gcr.io/bot-exploration/proxy-server:latest \
-    --platform=managed \
-    --region=europe-west2 \
-    --allow-unauthenticated \
-    --set-env-vars NODE_ENV=production
-```
+3. **Deploy to Google Cloud Run**:
+    ```bash
+    gcloud run deploy proxy-server \
+        --image=gcr.io/bot-exploration/proxy-server:latest \
+        --platform=managed \
+        --region=europe-west2 \
+        --allow-unauthenticated \
+        --set-env-vars NODE_ENV=production
+    ```
 
 ---
 
 ## Debugging
 
-### View Logs on Google Cloud Run
+### Viewing Logs
 
-1. Open the [Google Cloud Console](https://console.cloud.google.com/).
-2. Navigate to **Cloud Run**.
-3. Select your deployed service (e.g., `proxy-server`).
-4. Go to the **Logs** tab to view real-time logs.
+1. **Google Cloud Run Logs**:
+    - Navigate to **Cloud Run** in [Google Cloud Console](https://console.cloud.google.com/).
+    - Select your service and view logs in the **Logs** tab.
 
-#### Tips for Debugging:
-- Filter logs using severity or message content.
-- Check for errors related to WebSocket messages, STT/TTS processing, or API invocations.
+2. **Local Debugging**:
+    - Run with `nodemon` for auto-restart:
+      ```bash
+      nodemon server.js
+      ```
+    - Enable verbose logging in `.env`:
+      ```
+      DEBUG=true
+      ```
 
-### Debug Locally
-It's possible to connfigure .env locally to switch off gemini api requests during UI or other non gemini related dev. The mock service will just playback whatever is transcripted from user's input.
+### Common Issues
 
-```bash
-USE_MOCK_GEMINI=true
-```
-
-```bash
-npm start
-```
-
----
-
-## Notes
-- Ensure your `GOOGLE_APPLICATION_CREDENTIALS` environment variable is set correctly when running locally or deploying.
+- **Ngrok Errors**:
+  Ensure `ngrok` is configured correctly and tunnels are active.
+- **Environment Variable Issues**:
+  Verify `.env` files are correctly updated.
+- **WebSocket Issues**:
+  Check the `API_URL` in the client matches the proxy server address.
 
 ---
 
-Feel free to extend or update these instructions as needed for the team!
+## Contribution Guidelines
+
+Feel free to contribute by submitting pull requests for bug fixes or enhancements. Ensure code adheres to the existing style and includes relevant documentation updates.

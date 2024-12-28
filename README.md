@@ -18,16 +18,16 @@ The project is composed of the following components:
 
 1. **Proxy Server**
    - Handles the backend logic and communication with STT, Gemini, and TTS APIs.
-   - Located in the `proxy-server` folder.
+   - Located in the [proxy-server](https://github.com/kupferco/voice-app-exploration/tree/main/proxy-server) folder.
    - Deployment is managed via Google Cloud Run.
 
 2. **React Native Web Front-End**
    - Built with React Native Expo and exported for web.
-   - Located in the `VoiceApp` folder.
+   - Located in the [VoiceApp](https://github.com/kupferco/voice-app-exploration/tree/main/VoiceApp) folder.
    - Deployment is managed via Firebase Hosting.
 
 3. **Websocket Communication**
-   - All communication between client and server is made via WebSocket.
+   - Most voice interactions between client and server are made via WebSocket. Some functionalities are managed via REST instead (for example "clear history", "save instruction prompt", etc...)
 
 ## Purpose
 
