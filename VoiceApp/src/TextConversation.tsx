@@ -3,26 +3,33 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, TextInput, Button, ScrollView, Text, StyleSheet } from 'react-native';
 import { API_URL } from '@env';
 
-interface Message {
-    sender: string;
-    content: string;
+interface ServerMessage {
+    role: string;
+    text: string;
 }
 
 interface TextConversationProps {
     sessionId: string | null;
+    history: ServerMessage[];
+    onClearConversation: () => void;
 }
 
-const TextConversation: React.FC<TextConversationProps> = ({ sessionId }) => {
-    const [messages, setMessages] = useState<Message[]>([]);
+const TextConversation: React.FC<TextConversationProps> = ({ sessionId, history, onClearConversation }) => {
+    const [messages, setMessages] = useState<ServerMessage[]>([]);
     const [userInput, setUserInput] = useState('');
     const [loading, setLoading] = useState(false);
     const inputRef = useRef<TextInput | null>(null);
     const scrollViewRef = useRef<ScrollView | null>(null);
 
+    // Load initial history
+    useEffect(() => {
+        setMessages(history);
+    }, [history]);
+
     const handleSendMessage = async () => {
         if (!userInput.trim() || !sessionId) return;
 
-        setMessages((prev) => [...prev, { sender: 'user', content: userInput }]);
+        setMessages((prev) => [...prev, { role: 'user', text: userInput }]);
         setLoading(true);
 
         try {
@@ -38,7 +45,7 @@ const TextConversation: React.FC<TextConversationProps> = ({ sessionId }) => {
             }
 
             const data = await response.json();
-            setMessages((prev) => [...prev, { sender: 'agent', content: data.response }]);
+            setMessages((prev) => [...prev, { role: 'assistant', text: data.response }]);
         } catch (error) {
             console.error('Error sending message:', error);
         } finally {
@@ -63,6 +70,24 @@ const TextConversation: React.FC<TextConversationProps> = ({ sessionId }) => {
 
     return (
         <View style={styles.container}>
+            <ScrollView
+                ref={scrollViewRef}
+                style={styles.scrollView}
+                contentContainerStyle={styles.scrollViewContent}
+            >
+                {messages.map((message, index) => (
+                    <View
+                        key={index}
+                        style={[
+                            styles.message,
+                            message.role === 'user' ? styles.userMessage : styles.agentMessage,
+                        ]}
+                    >
+                        <Text>{message.text}</Text>
+                    </View>
+                ))}
+                {loading && <Text style={styles.loadingText}>Loading...</Text>}
+            </ScrollView>
             <View style={styles.inputContainer}>
                 <TextInput
                     ref={inputRef}
@@ -79,26 +104,11 @@ const TextConversation: React.FC<TextConversationProps> = ({ sessionId }) => {
                     disabled={loading}
                 />
             </View>
-            <ScrollView
-                ref={scrollViewRef}
-                style={styles.scrollView}
-                contentContainerStyle={styles.scrollViewContent}
-            >
-                {messages.map((message, index) => (
-                    <View
-                        key={index}
-                        style={[
-                            styles.message,
-                            message.sender === 'user' ? styles.userMessage : styles.agentMessage,
-                        ]}
-                    >
-                        <Text>{message.content}</Text>
-                    </View>
-                ))}
-                {loading && (
-                    <Text style={styles.loadingText}>Loading...</Text>
-                )}
-            </ScrollView>
+            <Button
+                onPress={onClearConversation}
+                title="Clear Conversation"
+                color="red"
+            />
         </View>
     );
 };
@@ -106,21 +116,6 @@ const TextConversation: React.FC<TextConversationProps> = ({ sessionId }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 10,
-        borderTopWidth: 1,
-        borderColor: '#ccc',
-    },
-    textInput: {
-        flex: 1,
-        borderWidth: 1,
-        borderColor: '#ccc',
-        borderRadius: 5,
-        padding: 10,
-        marginRight: 10,
     },
     scrollView: {
         flex: 1,
@@ -141,6 +136,21 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
         alignSelf: 'flex-start',
         marginVertical: 5,
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 10,
+        borderTopWidth: 1,
+        borderColor: '#ccc',
+    },
+    textInput: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 5,
+        padding: 10,
+        marginRight: 10,
     },
 });
 

@@ -7,7 +7,7 @@ import { API_URL } from '@env';
  * @param {string} sessionId - The session ID to fetch the prompt for.
  * @param {Function} setPrompt - Callback to update the prompt state.
  */
-export const fetchPrompt = async (sessionId, setPrompt) => {
+export const fetchPrompt = async (sessionId: string, setPrompt: (prompt: string) => void): Promise<void> => {
   try {
     const response = await fetch(`${API_URL}/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`, {
       method: 'GET',
@@ -24,6 +24,8 @@ export const fetchPrompt = async (sessionId, setPrompt) => {
 
     const data = await response.json();
     setPrompt(data.prompt || '');
+
+    console.log(`${API_URL}/api/gemini/history?sessionId=${sessionId}&`)
   } catch (error) {
     console.error('Error fetching system prompt:', error);
   }
@@ -34,7 +36,7 @@ export const fetchPrompt = async (sessionId, setPrompt) => {
  * @param {string} prompt - The new system prompt.
  * @param {string} sessionId - The session ID to associate the new prompt with.
  */
-export const savePrompt = async (prompt, sessionId) => {
+export const savePrompt = async (prompt: string, sessionId: string): Promise<void> => {
   if (!prompt.trim()) {
     alert('System prompt cannot be empty.');
     return;
@@ -66,7 +68,7 @@ export const savePrompt = async (prompt, sessionId) => {
  * Clears the conversation history for a session.
  * @param {string} sessionId - The session ID to clear the history for.
  */
-export const clearHistory = async (sessionId) => {
+export const clearHistory = async (sessionId: string): Promise<void> => {
   try {
     const response = await fetch(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}&clear=true`, {
       method: 'GET',
@@ -85,5 +87,33 @@ export const clearHistory = async (sessionId) => {
     console.log(result.message || 'Conversation history cleared.');
   } catch (error) {
     console.error('Error clearing conversation history:', error);
+  }
+};
+
+/**
+ * Fetches the conversation history for a session.
+ * @param {string} sessionId - The session ID to fetch the history for.
+ * @returns {Promise<Array>} - A promise resolving to the conversation history.
+ */
+export const fetchHistory = async (sessionId: string): Promise<Array<{ sender: string; content: string }>> => {
+  try {
+    const response = await fetch(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      },
+    });
+
+    if (!response.ok) {
+      console.error('Failed to fetch conversation history.');
+      return [];
+    }
+
+    const history = await response.json();
+    return history;
+  } catch (error) {
+    console.error('Error fetching conversation history:', error);
+    return [];
   }
 };

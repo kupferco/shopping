@@ -1,4 +1,4 @@
-// src/sessionManager.js
+// src/SessionManager.js
 import { v4 as uuidv4 } from 'uuid';
 
 const SESSION_TTL = 30 * 60 * 1000; // 30 minutes in milliseconds

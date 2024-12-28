@@ -3,7 +3,7 @@ const path = require('path');
 
 // Paths to .env files
 const proxyEnvPath = path.join(__dirname, 'proxy-server', '.env');
-const clientEnvPath = path.join(__dirname, 'VoiceApp', '.env');
+const clientEnvPath = path.join(__dirname, 'VoiceApp', '.env.development');
 
 // Ngrok API endpoint
 const ngrokApiUrl = 'http://127.0.0.1:4040/api/tunnels';

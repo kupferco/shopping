@@ -5,8 +5,8 @@ import { useWebSocket } from './src/WebSocketManager';
 import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 import TTSService from './src/TTSService';
 import { API_URL, NODE_ENV } from '@env';
-import { fetchPrompt, savePrompt, clearHistory } from './src/PromptService';
-import TextConversation from './src/TextConversation';
+import { fetchHistory, fetchPrompt, savePrompt, clearHistory } from './src/PromptService';
+import TextConversation from './src/TextConversation'
 
 console.log(`Environment: ${NODE_ENV}`);
 console.log(`API URL: ${API_URL}`);
@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
+  const [conversationHistory, setConversationHistory] = useState<{ sender: string; content: string }[]>([]);
 
   const streamControls = useRef<{
     start: () => void;
@@ -29,20 +30,26 @@ const App: React.FC = () => {
 
   const { restartSession } = useWebSocket();
 
-  useEffect(() => {
-    const id = initializeSession();
-    setSessionId(id);
 
-    if (id) {
-      fetchPrompt(id, setPrompt);
-    }
+  useEffect(() => {
+    const initSession = async () => {
+      const id = initializeSession();
+      setSessionId(id);
+
+      if (id) {
+        const history = await fetchHistory(id);
+        setConversationHistory(history);
+        fetchPrompt(id, setPrompt);
+      }
+    };
+
+    initSession();
   }, []);
 
   const handleClearHistory = async () => {
     if (sessionId) {
       await clearHistory(sessionId);
-    } else {
-      console.error('No active session to clear history.');
+      setConversationHistory([]); // Clear UI conversation
     }
   };
 
@@ -125,13 +132,17 @@ const App: React.FC = () => {
           style={{ width: '100%', height: '50px', marginBottom: '5px' }}
         />
         <button onClick={() => savePrompt(prompt, sessionId)} disabled={isMicOn}>Save instruction prompt</button>
-        <br/><br/>
+        <br /><br />
         <button onClick={handleStart} disabled={isMicOn}>Start</button>
         <button onClick={handleStop} disabled={!isMicOn}>Stop</button>
         <button onClick={handleMute} disabled={!isMicOn}>{isMuted ? 'Unmute' : 'Mute'}</button>
         <button onClick={handleStopTTS} disabled={!isMicOn}>Interrupt TTS</button>
       </div>
-      <TextConversation sessionId={sessionId} />
+      <TextConversation
+        sessionId={sessionId}
+        history={conversationHistory}
+        onClearConversation={() => setConversationHistory([])}
+      />
       <GoogleSpeechStream
         onTranscript={handleTranscript}
         onReady={handleReady}
