@@ -22,8 +22,8 @@ This document outlines the services and endpoints provided by the proxy server f
 ### API Endpoints
 - **`POST /api/tts`**: Handles text-to-speech requests.
 - **`POST /api/stt`**: Handles speech-to-text requests via HTTP (currently unused in favor of WebSocket).
-- **`POST /api/gemini`**: Sends user input to the Gemini API and retrieves a response. Optionally clears conversation history when `clear: true` is passed.
-- **`GET /api/gemini/history`**: Retrieves the conversation history for a given session.
+- **`POST /api/gemini`**: Sends user input to the Gemini API and retrieves a response.
+- **`GET /api/gemini/history`**: Retrieves the conversation history for a given session. Optionally clears the history when `clear=true` is passed in the query string.
 - **`POST /api/gemini/system-prompt`**: Updates the system prompt for a session.
 - **`GET /api/gemini/system-prompt`**: Retrieves the current system prompt for a session.
 
@@ -34,14 +34,15 @@ This document outlines the services and endpoints provided by the proxy server f
 The server maintains a conversation history for each session, which includes exchanges between the user and the assistant. This history can be managed using the following strategies:
 
 ### Clearing History
-- Use the `clear: true` flag in the **`POST /api/gemini`** endpoint to reset the conversation history for the session, retaining only the initial system prompt.
-- Alternatively, use **`GET /api/gemini/history?clear=true`** to achieve the same result.
+- Use **`GET /api/gemini/history?sessionId=<sessionId>&clear=true`** to clear the conversation history for a session, retaining only the initial system prompt.
 
 ### Updating History
 - The history is automatically updated with each user message and assistant response.
 
 ### Retrieving History
-- Use **`GET /api/gemini/history`** to fetch the current conversation history for a session.
+- Use **`GET /api/gemini/history?sessionId=<sessionId>`** to fetch the current conversation history for a session.
+
+> **Note:** All API requests must include a valid `sessionId` parameter to identify the session.
 
 ---
 
@@ -145,3 +146,8 @@ The server maintains a conversation history for each session, which includes exc
 ## Contribution Guidelines
 
 Feel free to contribute by submitting pull requests for bug fixes or enhancements. Ensure code adheres to the existing style and includes relevant documentation updates.
+
+---
+
+This README reflects the current state of the proxy server and its services. For additional details or questions, contact the project maintainers.
+
