@@ -30,11 +30,11 @@ const App: React.FC = () => {
     const id = initializeSession();
     setSessionId(id);
 
-    console.log(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(id)}`)
-
+    
     // Fetch the existing system prompt for the session
     const fetchPrompt = async () => {
       if (!sessionId) return;
+      console.log(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}`)
       try {
         const response = await fetch(`${API_URL}/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`, {
           method: 'GET',
@@ -61,29 +61,30 @@ const App: React.FC = () => {
 
   const handleClearHistory = async () => {
     if (!sessionId) {
-      console.error('No active session to clear history.');
-      return;
+        console.error('No active session to clear history.');
+        return;
     }
     try {
-      const response = await fetch(`${API_URL}/api/gemini/history`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: JSON.stringify({ sessionId }),
-      });
+        const response = await fetch(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}&clear=true`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            },
+        });
 
-      if (!response.ok) {
-        console.error('Failed to clear conversation history.');
-        return;
-      }
+        if (!response.ok) {
+            console.error('Failed to clear conversation history.');
+            return;
+        }
 
-      console.log('Conversation history cleared.');
+        const result = await response.json();
+        console.log(result.message || 'Conversation history cleared.');
     } catch (error) {
-      console.error('Error clearing conversation history:', error);
+        console.error('Error clearing conversation history:', error);
     }
-  };
+};
+
 
   const handleRenewSession = () => {
     const newSessionId = renewSessionId();
@@ -188,7 +189,7 @@ const App: React.FC = () => {
         <p>Your session ID: {sessionId || 'No active session'}</p>
         <button
           onClick={handleClearHistory}
-          disabled={isMicOn}>Clear conversation history</button>
+          >Clear conversation history</button>
         <button
           onClick={handleRenewSession}
           disabled={isMicOn}>Renew session</button>

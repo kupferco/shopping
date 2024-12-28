@@ -32,16 +32,10 @@ async function updateSystemPrompt(req, res) {
 }
 
 async function handleGeminiRequest(req, res) {
-    const { sessionId, inputText, clear } = req.body;
+    const { sessionId, inputText } = req.body;
 
     if (!sessionId) {
         return res.status(400).send('Session ID is required.');
-    }
-
-    if (clear) {
-        // Clear the conversation history if requested
-        clearHistory(sessionId);
-        return res.json({ message: `Conversation history cleared from ${sessionId}` });
     }
 
     // Add user input to conversation history
@@ -110,20 +104,28 @@ async function handleGeminiRequest(req, res) {
 }
 
 async function handleGeminiHistoryRequest(req, res) {
-    const { sessionId } = req.query;
+    const { sessionId, clear } = req.query;
 
     if (!sessionId) {
         return res.status(400).send('Session ID is required.');
     }
 
     try {
+        if (clear === 'true') {
+            // Clear the conversation history if requested
+            clearHistory(sessionId);
+            return res.json({ message: `Conversation history cleared for session ${sessionId}` });
+        }
+
+        // Fetch the conversation history
         const history = getHistory(sessionId);
         res.json(history);
     } catch (error) {
-        console.error('Error fetching conversation history:', error);
-        res.status(500).send('Error fetching conversation history');
+        console.error('Error handling conversation history request:', error);
+        res.status(500).send('Error handling conversation history request');
     }
 }
+
 
 module.exports = {
     handleGeminiRequest,
