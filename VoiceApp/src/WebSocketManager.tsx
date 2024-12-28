@@ -1,6 +1,10 @@
 import React, { createContext, useRef, useEffect, useCallback } from 'react';
-import { getSessionId, initializeSession } from './sessionManager';
-import { API_URL } from '@env';
+import { getSessionId, initializeSession } from './SessionManager';
+import { API_URL, NODE_ENV } from '@env';
+
+console.log(`Environment: ${NODE_ENV}`);
+console.log(`API URL: ${API_URL}`);
+
 
 interface WebSocketContextProps {
     sendMessage: (message: any) => void;
