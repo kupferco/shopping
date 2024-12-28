@@ -25,6 +25,11 @@ const GoogleSpeechStream: React.FC<GoogleSpeechStreamProps> = ({ onTranscript, o
         registerHandler('stt', ({ transcript, isFinal }) => {
             onTranscript(transcript, isFinal);
         });
+
+        return () => {
+            console.log('Cleaning up STT handler');
+            registerHandler('stt', () => { });
+        };
     }, [registerHandler, onTranscript]);
 
     const startRecording = async () => {

@@ -109,7 +109,6 @@ const TTSService: React.FC<{
                 const metadata = JSON.parse(new TextDecoder().decode(metadataBuffer));
                 if (metadata.action === 'tts_audio') {
                     const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
-                    console.log('PLAY TTS!!!')
                     await playAudio(audioBlob);
                 } else {
                     console.warn('Unknown action:', metadata.action);

@@ -1,7 +1,7 @@
 {
   "name": "voiceapp",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "index.tsx",
   "scripts": {
     "start": "expo start --localhost",
     "android": "expo start --android",

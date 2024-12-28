@@ -105,6 +105,14 @@ wss.on('connection', (socket) => {
                         });
                         break;
 
+                    case 'restart_session':
+                        console.log(`Session restarted with ID: ${sessionId}`);
+                        if (activeSockets[sessionId]) {
+                            stopAudioProcessing(sessionId); // Stop existing session
+                        }
+                        activeSockets[sessionId] = socket; // Assign the new session ID
+                        break;
+
                     case 'start_stt':
                         if (!activeSockets[sessionId]) {
                             console.error('Invalid session ID. Cannot start STT.');

@@ -1,12 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { initializeSession, clearSessionId } from './src/sessionManager';
-import { WebSocketProvider } from './src/WebSocketManager';
+import { initializeSession, renewSessionId, clearSessionId } from './src/sessionManager';
+import { useWebSocket } from './src/WebSocketManager';
 import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 import TTSService from './src/TTSService';
 import { API_URL } from '@env';
 
 console.log('API URL:', API_URL);
-
 
 const App: React.FC = () => {
   const [transcript, setTranscript] = useState('');
@@ -24,10 +23,14 @@ const App: React.FC = () => {
     isMuted: () => boolean;
   } | null>(null);
 
+  const { restartSession } = useWebSocket(); // Use restartSession from WebSocketManager
+
   useEffect(() => {
     // Initialize the session
     const id = initializeSession();
     setSessionId(id);
+
+    console.log(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(id)}`)
 
     // Fetch the existing system prompt for the session
     const fetchPrompt = async () => {
@@ -48,9 +51,6 @@ const App: React.FC = () => {
 
         const data = await response.json();
         setPrompt(data.prompt || '');
-        console.log('Conversation history',`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}`);
-        console.log('Session prompt',`${API_URL}/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`);
-        // }, 1000)
       } catch (error) {
         console.error('Error fetching system prompt:', error);
       }
@@ -59,22 +59,52 @@ const App: React.FC = () => {
     if (id) fetchPrompt();
   }, [sessionId]);
 
-  const handleClearSession = () => {
-    clearSessionId();
-    setSessionId(null);
-    console.log('Session cleared.');
+  const handleClearHistory = async () => {
+    if (!sessionId) {
+      console.error('No active session to clear history.');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_URL}/api/gemini/history`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to clear conversation history.');
+        return;
+      }
+
+      console.log('Conversation history cleared.');
+    } catch (error) {
+      console.error('Error clearing conversation history:', error);
+    }
+  };
+
+  const handleRenewSession = () => {
+    const newSessionId = renewSessionId();
+    setSessionId(newSessionId);
+    console.log('Session renewed with new ID:', newSessionId);
+
+    // Restart WebSocket session
+    restartSession();
   };
 
   const handleAudioStreamReady = (stream: MediaStream | null) => {
     setAudioStream(stream);
   };
+
   const handleReady = useCallback((controls: typeof streamControls.current) => {
     streamControls.current = controls;
   }, []);
 
   const handleTranscript = useCallback((newTranscript: string, isFinal: boolean) => {
-    if (isFinal) {
-      // console.log("Transcript ::", newTranscript);
+    if (isFinal || true) {
+      console.log(newTranscript);
       setTranscript((prev) => `${prev} ${newTranscript}`);
     }
   }, []);
@@ -152,11 +182,16 @@ const App: React.FC = () => {
   };
 
   return (
-    <WebSocketProvider>
+    <div>
       <div>
         <h1>Welcome to the Voice App</h1>
         <p>Your session ID: {sessionId || 'No active session'}</p>
-        <button onClick={handleClearSession}>Clear conversation history</button>
+        <button
+          onClick={handleClearHistory}
+          disabled={isMicOn}>Clear conversation history</button>
+        <button
+          onClick={handleRenewSession}
+          disabled={isMicOn}>Renew session</button>
         <div>
           <textarea
             value={prompt}
@@ -164,7 +199,9 @@ const App: React.FC = () => {
             placeholder="Enter new system prompt"
             style={{ width: '100%', height: '50px' }}
           />
-          <button onClick={savePrompt}>Save Prompt</button>
+          <button
+            onClick={savePrompt}
+            disabled={isMicOn}>Save instruction prompt</button>
         </div>
         <p>Transcript: {transcript}</p>
         <button onClick={handleStart} disabled={isMicOn}>
@@ -185,7 +222,7 @@ const App: React.FC = () => {
         />
         <TTSService audioStream={audioStream} onReady={handleTTSReady} />
       </div>
-    </WebSocketProvider>
+    </div>
   );
 };
 
