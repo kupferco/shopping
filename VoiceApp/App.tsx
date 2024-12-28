@@ -1,4 +1,3 @@
-// App.tsx
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { initializeSession, renewSessionId } from './src/SessionManager';
 import { useWebSocket } from './src/WebSocketManager';
@@ -6,7 +5,7 @@ import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 import TTSService from './src/TTSService';
 import { API_URL, NODE_ENV } from '@env';
 import { fetchHistory, fetchPrompt, savePrompt, clearHistory } from './src/PromptService';
-import TextConversation from './src/TextConversation'
+import TextConversation from './src/TextConversation';
 
 console.log(`Environment: ${NODE_ENV}`);
 console.log(`API URL: ${API_URL}`);
@@ -19,7 +18,7 @@ const App: React.FC = () => {
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
-  const [conversationHistory, setConversationHistory] = useState<{ sender: string; content: string }[]>([]);
+  const [conversationHistory, setConversationHistory] = useState<{ role: string; text: string }[]>([]);
 
   const streamControls = useRef<{
     start: () => void;
@@ -30,6 +29,21 @@ const App: React.FC = () => {
 
   const { restartSession, registerHandler } = useWebSocket();
 
+  // Reusable method to refresh history
+  const refreshHistory = useCallback(async () => {
+    if (!sessionId) {
+      console.warn("No session ID available to refresh history.");
+      return;
+    }
+
+    try {
+      const history = await fetchHistory(sessionId);
+      console.log("Fetched conversation history:", history);
+      setConversationHistory(history);
+    } catch (error) {
+      console.error("Error fetching conversation history:", error);
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     const initSession = async () => {
@@ -37,29 +51,27 @@ const App: React.FC = () => {
       setSessionId(id);
 
       if (id) {
-        const history = await fetchHistory(id);
-        setConversationHistory(history);
+        await refreshHistory(); // Use reusable method
         fetchPrompt(id, setPrompt);
       }
     };
 
     initSession();
-  }, []);
+  }, [refreshHistory]);
 
   useEffect(() => {
     if (!sessionId) return;
 
     const handleGeminiResponse = async () => {
-      const history = await fetchHistory(sessionId);
-      setConversationHistory(history);
+      await refreshHistory(); // Use reusable method
     };
 
     registerHandler('gemini', handleGeminiResponse);
 
     return () => {
-      registerHandler('gemini', () => { }); // Unregister the handler
+      registerHandler('gemini', () => {}); // Unregister the handler
     };
-  }, [sessionId, registerHandler]);
+  }, [sessionId, registerHandler, refreshHistory]);
 
   const handleClearHistory = async () => {
     if (sessionId) {
@@ -75,30 +87,43 @@ const App: React.FC = () => {
     restartSession();
   };
 
-  const handleAudioStreamReady = (stream: MediaStream | null) => {
-    setAudioStream(stream);
-  };
+  const handleTranscript = useCallback(
+    async (newTranscript: string, isFinal: boolean) => {
+      console.log("handleTranscript triggered");
+      console.log("Session ID:", sessionId);
+
+      if (!sessionId) {
+        console.warn("Session ID is missing, skipping handleTranscript.");
+        return;
+      }
+
+      if (isFinal || true) {
+        console.log("Transcript received:", newTranscript);
+
+        // Add the user's message to the conversation history
+        setConversationHistory((prev) => [
+          ...prev,
+          { role: "user", text: newTranscript },
+          { role: "assistant", text: "Loading..." }, // Placeholder for agent's response
+        ]);
+
+        await refreshHistory(); // Use reusable method
+      }
+    },
+    [sessionId, refreshHistory]
+  );
+
+  const handleMuteChange = useCallback((muted: boolean) => {
+    setIsMuted(muted);
+  }, []);
 
   const handleReady = useCallback((controls: typeof streamControls.current) => {
     streamControls.current = controls;
   }, []);
 
-  const handleTranscript = useCallback(async (newTranscript: string, isFinal: boolean) => {
-    if (!sessionId) return;
-    
-    if (isFinal || true) {
-      console.log(newTranscript);
-      setTranscript((prev) => `${prev} ${newTranscript}`);
-
-      // Refresh the conversation history after a transcript is processed
-      const history = await fetchHistory(sessionId);
-      setConversationHistory(history);
-    }
-  }, []);
-
-  const handleMuteChange = useCallback((muted: boolean) => {
-    setIsMuted(muted);
-  }, []);
+  const handleAudioStreamReady = (stream: MediaStream | null) => {
+    setAudioStream(stream);
+  };
 
   const handleStart = () => {
     if (streamControls.current) {
@@ -162,7 +187,6 @@ const App: React.FC = () => {
       <TextConversation
         sessionId={sessionId}
         history={conversationHistory}
-        onClearConversation={() => setConversationHistory([])}
       />
       <GoogleSpeechStream
         onTranscript={handleTranscript}

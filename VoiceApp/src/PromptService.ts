@@ -95,7 +95,7 @@ export const clearHistory = async (sessionId: string): Promise<void> => {
  * @param {string} sessionId - The session ID to fetch the history for.
  * @returns {Promise<Array>} - A promise resolving to the conversation history.
  */
-export const fetchHistory = async (sessionId: string): Promise<Array<{ sender: string; content: string }>> => {
+export const fetchHistory = async (sessionId: string): Promise<Array<{ role: string; text: string }>> => {
   try {
     const response = await fetch(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}`, {
       method: 'GET',
