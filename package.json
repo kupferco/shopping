@@ -5,7 +5,12 @@
     "start-proxy": "cd proxy-server && npm start",
     "start-client": "wait-on http://127.0.0.1:4040 && cd VoiceApp && npx expo start --clear",
     "start": "concurrently -n \"NGROK,PROXY,CLIENT\" -c \"blue,green,magenta\" \"npm run update-ngrok\" \"npm run start-proxy\" \"npm run start-client\"",
-    "start-project-ngrok": "concurrently \"npm run start-ngrok\" \"npm start\""
+    "start-project-ngrok": "concurrently \"npm run start-ngrok\" \"npm start\"",
+    "build-proxy": "docker build -t gcr.io/bot-exploration/proxy-server:latest ./proxy-server",
+    "push-proxy": "docker push gcr.io/bot-exploration/proxy-server:latest",
+    "deploy-proxy": "gcloud run deploy proxy-server --image=gcr.io/bot-exploration/proxy-server:latest --platform=managed --region=europe-west2 --allow-unauthenticated --set-env-vars NODE_ENV=production",
+    "deploy-voiceapp": "cd VoiceApp && npm run firebase-deploy",
+    "deploy-project": "npm run build-proxy && npm run push-proxy && npm run deploy-proxy && npm run deploy-voiceapp"
   },
   "dependencies": {
     "dotenv": "^16.4.7"

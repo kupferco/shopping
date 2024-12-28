@@ -14,20 +14,50 @@ voice-app-exploration/
 ├── package.json       # Project scripts and dependencies
 ```
 
+
 The project is composed of the following components:
 
 1. **Proxy Server**
    - Handles the backend logic and communication with STT, Gemini, and TTS APIs.
-   - Located in the [proxy-server](https://github.com/kupferco/voice-app-exploration/tree/main/proxy-server) folder.
+   - Located in the [proxy-server](./proxy-server) folder.
    - Deployment is managed via Google Cloud Run.
 
 2. **React Native Web Front-End**
    - Built with React Native Expo and exported for web.
-   - Located in the [VoiceApp](https://github.com/kupferco/voice-app-exploration/tree/main/VoiceApp) folder.
+   - Located in the [VoiceApp](./VoiceApp) folder.
    - Deployment is managed via Firebase Hosting.
 
 3. **Websocket Communication**
-   - Most voice interactions between client and server are made via WebSocket. Some functionalities are managed via REST instead (for example "clear history", "save instruction prompt", etc...)
+   - Most voice interactions between client and server are made via WebSocket. Some functionalities are managed via REST instead (for example "clear history", "save instruction prompt", etc...).
+
+## Deployment Workflow
+
+### Deploy the Entire Project
+
+1. **Run the Deployment Script:**
+   ```bash
+   npm run deploy-project
+   ```
+
+This script:
+
+  - Builds and pushes the Docker image for the proxy-server to Google Container Registry (GCR).
+  - Deploys the proxy-server to Google Cloud Run.
+  - Builds and deploys the VoiceApp front-end to Firebase Hosting.
+
+2. **Individual Deployments**
+
+  - Proxy Server Only:
+    ```bash
+    npm run build-proxy && npm run push-proxy && npm run deploy-proxy
+    ```
+
+  - VoiceApp Only:
+    ```bash
+    npm run deploy-voiceapp
+    ```
+
+
 
 ## Purpose
 
@@ -58,6 +88,7 @@ The `Voice UI Exploration` repository serves as a boilerplate for building a mor
    cd ../VoiceApp && npm install
    cd ..
    ```
+
 
 ## Scripts
 

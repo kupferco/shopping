@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { initializeSession, renewSessionId, clearSessionId } from './src/sessionManager';
+import { initializeSession, renewSessionId, clearSessionId } from './src/SessionManager';
 import { useWebSocket } from './src/WebSocketManager';
 import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 import TTSService from './src/TTSService';
-import { API_URL } from '@env';
+import { API_URL, NODE_ENV } from '@env';
 
-console.log('API URL:', API_URL);
+console.log(`Environment: ${NODE_ENV}`);
+console.log(`API URL: ${API_URL}`);
 
 const App: React.FC = () => {
   const [transcript, setTranscript] = useState('');
