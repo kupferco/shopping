@@ -28,7 +28,7 @@ const App: React.FC = () => {
     isMuted: () => boolean;
   } | null>(null);
 
-  const { restartSession } = useWebSocket();
+  const { restartSession, registerHandler } = useWebSocket();
 
 
   useEffect(() => {
@@ -45,6 +45,21 @@ const App: React.FC = () => {
 
     initSession();
   }, []);
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const handleGeminiResponse = async () => {
+      const history = await fetchHistory(sessionId);
+      setConversationHistory(history);
+    };
+
+    registerHandler('gemini', handleGeminiResponse);
+
+    return () => {
+      registerHandler('gemini', () => { }); // Unregister the handler
+    };
+  }, [sessionId, registerHandler]);
 
   const handleClearHistory = async () => {
     if (sessionId) {
@@ -68,10 +83,16 @@ const App: React.FC = () => {
     streamControls.current = controls;
   }, []);
 
-  const handleTranscript = useCallback((newTranscript: string, isFinal: boolean) => {
+  const handleTranscript = useCallback(async (newTranscript: string, isFinal: boolean) => {
+    if (!sessionId) return;
+    
     if (isFinal || true) {
       console.log(newTranscript);
       setTranscript((prev) => `${prev} ${newTranscript}`);
+
+      // Refresh the conversation history after a transcript is processed
+      const history = await fetchHistory(sessionId);
+      setConversationHistory(history);
     }
   }, []);
 

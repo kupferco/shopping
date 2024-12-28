@@ -11,10 +11,9 @@ interface ServerMessage {
 interface TextConversationProps {
     sessionId: string | null;
     history: ServerMessage[];
-    onClearConversation: () => void;
 }
 
-const TextConversation: React.FC<TextConversationProps> = ({ sessionId, history, onClearConversation }) => {
+const TextConversation: React.FC<TextConversationProps> = ({ sessionId, history }) => {
     const [messages, setMessages] = useState<ServerMessage[]>([]);
     const [userInput, setUserInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -104,11 +103,6 @@ const TextConversation: React.FC<TextConversationProps> = ({ sessionId, history,
                     disabled={loading}
                 />
             </View>
-            <Button
-                onPress={onClearConversation}
-                title="Clear Conversation"
-                color="red"
-            />
         </View>
     );
 };
