@@ -1,9 +1,11 @@
+// App.tsx
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { initializeSession, renewSessionId, clearSessionId } from './src/SessionManager';
 import { useWebSocket } from './src/WebSocketManager';
 import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 import TTSService from './src/TTSService';
 import { API_URL, NODE_ENV } from '@env';
+import { fetchPrompt, savePrompt, clearHistory } from './src/PromptService';
 
 console.log(`Environment: ${NODE_ENV}`);
 console.log(`API URL: ${API_URL}`);
@@ -31,61 +33,18 @@ const App: React.FC = () => {
     const id = initializeSession();
     setSessionId(id);
 
-    
-    // Fetch the existing system prompt for the session
-    const fetchPrompt = async () => {
-      if (!sessionId) return;
-      console.log(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}`)
-      try {
-        const response = await fetch(`${API_URL}/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true', // Bypass the Ngrok intro page
-          },
-        });
-
-        if (!response.ok) {
-          console.error('Failed to fetch system prompt.');
-          return;
-        }
-
-        const data = await response.json();
-        setPrompt(data.prompt || '');
-      } catch (error) {
-        console.error('Error fetching system prompt:', error);
-      }
-    };
-
-    if (id) fetchPrompt();
+    if (id) {
+      fetchPrompt(id, setPrompt);
+    }
   }, [sessionId]);
 
   const handleClearHistory = async () => {
-    if (!sessionId) {
-        console.error('No active session to clear history.');
-        return;
+    if (sessionId) {
+      await clearHistory(sessionId);
+    } else {
+      console.error('No active session to clear history.');
     }
-    try {
-        const response = await fetch(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}&clear=true`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true',
-            },
-        });
-
-        if (!response.ok) {
-            console.error('Failed to clear conversation history.');
-            return;
-        }
-
-        const result = await response.json();
-        console.log(result.message || 'Conversation history cleared.');
-    } catch (error) {
-        console.error('Error clearing conversation history:', error);
-    }
-};
-
+  };
 
   const handleRenewSession = () => {
     const newSessionId = renewSessionId();
@@ -155,34 +114,6 @@ const App: React.FC = () => {
     }
   };
 
-  const savePrompt = async () => {
-    if (!prompt.trim()) {
-      alert('System prompt cannot be empty.');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_URL}/api/gemini/system-prompt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, newPrompt: prompt }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Failed to update system prompt:', errorText);
-        alert('Error updating system prompt. Check logs for details.');
-        return;
-      }
-
-      const result = await response.json();
-      alert(result.message); // Success message
-    } catch (error) {
-      console.error('Error updating system prompt:', error);
-      alert('An error occurred while updating the system prompt.');
-    }
-  };
-
   return (
     <div>
       <div>
@@ -202,7 +133,7 @@ const App: React.FC = () => {
             style={{ width: '100%', height: '50px' }}
           />
           <button
-            onClick={savePrompt}
+            onClick={() => savePrompt(prompt, sessionId)}
             disabled={isMicOn}>Save instruction prompt</button>
         </div>
         <p>Transcript: {transcript}</p>
