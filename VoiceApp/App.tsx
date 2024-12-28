@@ -177,7 +177,7 @@ const App: React.FC = () => {
           placeholder="Enter new system prompt"
           style={{ width: '100%', height: '50px', marginBottom: '5px' }}
         />
-        <button onClick={() => savePrompt(prompt, sessionId)} disabled={isMicOn}>Save instruction prompt</button>
+        <button onClick={() => savePrompt(prompt, sessionId!)} disabled={isMicOn}>Save instruction prompt</button>
         <br /><br />
         <button onClick={handleStart} disabled={isMicOn}>Start</button>
         <button onClick={handleStop} disabled={!isMicOn}>Stop</button>
