@@ -1,0 +1,17 @@
+{
+  "scripts": {
+    "start-ngrok": "ngrok start --all --config ~/.ngrok/ngrok.yml",
+    "update-ngrok": "node update-ngrok-env.js",
+    "start-proxy": "cd proxy-server && npm start",
+    "start-client": "wait-on http://127.0.0.1:4040 && cd VoiceApp && npx expo start --clear",
+    "start": "concurrently -n \"NGROK,PROXY,CLIENT\" -c \"blue,green,magenta\" \"npm run update-ngrok\" \"npm run start-proxy\" \"npm run start-client\"",
+    "start-project-ngrok": "concurrently \"npm run start-ngrok\" \"npm start\""
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "wait-on": "^8.0.1"
+  }
+}

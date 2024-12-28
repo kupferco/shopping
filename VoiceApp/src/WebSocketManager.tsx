@@ -1,9 +1,11 @@
 import React, { createContext, useRef, useEffect, useCallback } from 'react';
-import { getSessionId } from './sessionManager';
+import { getSessionId, initializeSession } from './sessionManager';
+import { API_URL } from '@env';
 
 interface WebSocketContextProps {
     sendMessage: (message: any) => void;
     registerHandler: (action: string, handler: (data: any) => void) => void;
+    restartSession: () => void; // New method to restart session
 }
 
 const WebSocketContext = createContext<WebSocketContextProps | null>(null);
@@ -11,81 +13,79 @@ const WebSocketContext = createContext<WebSocketContextProps | null>(null);
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const wsRef = useRef<WebSocket | null>(null);
     const handlersRef = useRef<{ [action: string]: (data: any) => void }>({});
-    const sessionId = getSessionId();
+    const sessionIdRef = useRef<string | null>(getSessionId()); // Use ref to track session ID
 
-    useEffect(() => {
-        // const WEBSOCKET_ADDRESS = 'wss://192.168.1.105:8080';
-        // const WEBSOCKET_ADDRESS = 'wss://127.0.0.1:8080';
-        // const WEBSOCKET_ADDRESS = 'wss://localhost:8080';
-        // const WEBSOCKET_ADDRESS = 'wss://proxy-server-14953211771.europe-west2.run.app/';
-        const WEBSOCKET_ADDRESS = 'wss://e7e2-2a00-23c8-16b2-8301-b4ba-6b2a-34a2-ca6a.ngrok-free.app/';
+    const connectWebSocket = useCallback(() => {
+        const WEBSOCKET_ADDRESS = `${API_URL.replace(/^https/, 'wss')}`;
         wsRef.current = new WebSocket(WEBSOCKET_ADDRESS);
 
         wsRef.current.onopen = () => {
             console.log('WebSocket connected.');
             // Send sessionId as the first message
-            if (sessionId) {
-                wsRef.current?.send(JSON.stringify({ action: 'start_session', sessionId }));
+            if (sessionIdRef.current) {
+                wsRef.current?.send(JSON.stringify({ action: 'start_session', sessionId: sessionIdRef.current }));
             }
-        }
-        wsRef.current.onmessage = async (event) => {
-            // console.log('WebSocket message received:', event.data);
+        };
 
+        wsRef.current.onmessage = async (event) => {
             if (event.data instanceof Blob) {
-                // console.log(`Action: tts_audio, Payload:`, event.data);
-                // Pass the raw blob to the registered handler
                 if (handlersRef.current['tts_audio']) {
                     handlersRef.current['tts_audio'](event.data);
                 }
             } else if (typeof event.data === 'string') {
-                // Handle JSON message
                 try {
                     const { action, payload } = JSON.parse(event.data);
-                    console.log(`Action: ${action}, Payload:`, payload);
-
                     if (handlersRef.current[action]) {
                         handlersRef.current[action](payload);
                     }
                 } catch (err) {
                     console.error('Error parsing WebSocket message:', err);
                 }
-            } else {
-                console.warn('Unexpected WebSocket message type:', typeof event.data);
             }
         };
 
         wsRef.current.onerror = (error) => console.error('WebSocket error:', error);
         wsRef.current.onclose = () => console.log('WebSocket disconnected.');
-
-        return () => wsRef.current?.close();
     }, []);
 
-    // const sendMessage = useCallback((message: any) => {
-    //     if (wsRef.current?.readyState === WebSocket.OPEN) {
-    //         wsRef.current.send(message?.payload || JSON.stringify(message));
-    //     } else {
-    //         console.error('WebSocket is not open.');
-    //     }
-    // }, [sessionId]);
+    useEffect(() => {
+        connectWebSocket();
+
+        return () => wsRef.current?.close();
+    }, [connectWebSocket, sessionIdRef.current]); // Reconnect when sessionId changes
 
     const sendMessage = useCallback((message: any) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             const messageWithSession = {
                 ...message,
-                sessionId, // Include sessionId in every message
+                sessionId: sessionIdRef.current, // Include sessionId in every JSON message
             };
-            wsRef.current.send(message?.payload || JSON.stringify(messageWithSession));
+            wsRef.current.send(JSON.stringify(messageWithSession));
         } else {
             console.error('WebSocket is not open.');
         }
-    }, [sessionId]);
+    }, []);
 
     const registerHandler = useCallback((action: string, handler: (data: any) => void) => {
         handlersRef.current[action] = handler;
     }, []);
 
+    const restartSession = useCallback(() => {
+        if (!wsRef.current) {
+            console.error('WebSocket is not initialized. Cannot restart session.');
+            return;
+        }
+
+        console.log('Restart connetion!!!')
+
+        const newSessionId = initializeSession();
+        sessionIdRef.current = newSessionId;
+        wsRef.current.send(JSON.stringify({ action: 'restart_session', sessionId: newSessionId }));
+        console.log('Session restarted with new ID:', newSessionId);
+    }, []);
+
     return (
-        <WebSocketContext.Provider value={{ sendMessage, registerHandler }}>
+        <WebSocketContext.Provider value={{ sendMessage, registerHandler, restartSession }}>
             {children}
         </WebSocketContext.Provider>
     );

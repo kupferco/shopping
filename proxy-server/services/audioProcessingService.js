@@ -5,24 +5,16 @@ const { EventEmitter } = require('events');
 const eventEmitter = new EventEmitter();
 const speechClient = new SpeechClient();
 
-let recognizeStream = null;
-let ffmpegProcess = null;
+const sessions = {}; // A map to track session-specific state
 
-const streamingState = {
-    isStreaming: false,
-};
-
-const startAudioProcessing = (sessionId) => {
-    if (streamingState.isStreaming) {
-        console.log('Streaming already active. Ignoring start request.');
+const initializeRecognizeStream = (sessionId) => {
+    const session = sessions[sessionId];
+    if (!session) {
+        console.error(`Session ${sessionId} does not exist. Cannot initialize stream.`);
         return;
     }
 
-    console.log('Starting audio processing pipeline...');
-    streamingState.isStreaming = true;
-
-    // Initialize Google Speech streaming
-    recognizeStream = speechClient.streamingRecognize({
+    session.recognizeStream = speechClient.streamingRecognize({
         config: {
             encoding: 'LINEAR16',
             sampleRateHertz: 48000,
@@ -33,97 +25,192 @@ const startAudioProcessing = (sessionId) => {
     })
         .on('data', (data) => {
             const transcript = data.results[0]?.alternatives[0]?.transcript || '';
-            const isFinal = data.results[0]?.isFinal || false;
-
-            console.log('Transcription:', transcript);
-
-            // Emit the event with transcription data
-            eventEmitter.emit('transcription', { sessionId, transcript, isFinal });
+            console.log(`Session ${sessionId} transcription:`, transcript);
+            eventEmitter.emit('transcription', { sessionId, transcript });
         })
         .on('error', (err) => {
-            console.error('Google Streaming API error:', err);
+            console.error(`Session ${sessionId} Speech-to-Text stream error:`, err);
+            stopAudioProcessing(sessionId); // Stop the session on unrecoverable error
         })
         .on('end', () => {
-            console.log('Google Speech stream ended.');
+            console.log(`Session ${sessionId} Speech-to-Text stream ended.`);
         });
 
-    // Initialize FFmpeg process
-    if (!ffmpegProcess) {
-        ffmpegProcess = spawn('ffmpeg', [
-            '-i', 'pipe:0',         // Input from stdin
-            '-f', 's16le',          // Output raw PCM
-            '-acodec', 'pcm_s16le', // PCM codec
-            '-ac', '1',             // Mono audio
-            '-ar', '48000',         // 48kHz sample rate
-            'pipe:1',               // Output to stdout
-        ]);
-
-        ffmpegProcess.stdout.on('data', (pcmData) => {
-            if (recognizeStream) {
-                // console.log('Writing PCM data to Google Speech stream:', pcmData.length);
-                recognizeStream.write(pcmData);
-            } else {
-                console.log('Google Speech stream not active. Dropping PCM data.');
-            }
-        });
-
-        ffmpegProcess.on('close', (code) => {
-            console.log(`FFmpeg process exited with code ${code}`);
-            ffmpegProcess = null; // Reset FFmpeg process
-        });
-
-        ffmpegProcess.stderr.on('data', (data) => {
-            // Optional: Log FFmpeg stderr output
-        });
-
-        console.log('FFmpeg process started.');
-    }
-
-    console.log('Audio processing pipeline started.');
+    console.log(`Session ${sessionId} Speech-to-Text stream initialized.`);
 };
 
-const processAudioData = (data) => {
-    if (ffmpegProcess) {
-        ffmpegProcess.stdin.write(data);
-    } else {
-        console.error('Received raw audio data, but FFmpeg is not running.');
-    }
-};
-
-const stopGoogleStreaming = () => {
-    if (!streamingState.isStreaming) {
-        console.log('No active streaming to stop.');
+const startAudioProcessing = (sessionId) => {
+    if (sessions[sessionId]?.isStreaming) {
+        console.log(`Streaming already active for session ${sessionId}. Ignoring start request.`);
         return;
     }
 
-    console.log('Stopping Google Speech stream...');
-    streamingState.isStreaming = false;
+    console.log(`Starting audio processing pipeline for session ${sessionId}...`);
 
-    if (recognizeStream) {
-        recognizeStream.end();
-        recognizeStream = null;
+    // Initialize session state
+    sessions[sessionId] = {
+        recognizeStream: null,
+        ffmpegProcess: null,
+        isStreaming: true,
+        silenceInterval: null,
+        buffer: [],
+        isRestarting: false,
+    };
+
+    // Initialize Google Speech streaming
+    initializeRecognizeStream(sessionId);
+
+    // Initialize FFmpeg process
+    const ffmpegProcess = spawn('ffmpeg', [
+        '-i', 'pipe:0',
+        '-f', 's16le',
+        '-acodec', 'pcm_s16le',
+        '-ac', '1',
+        '-ar', '48000',
+        'pipe:1',
+    ]);
+
+    ffmpegProcess.stdout.on('data', (pcmData) => {
+        if (sessions[sessionId]?.recognizeStream) {
+            sessions[sessionId].recognizeStream.write(pcmData);
+        } else {
+            console.log(`Session ${sessionId} recognizeStream not active.`);
+        }
+    });
+
+    ffmpegProcess.stderr.on('data', (data) => {
+        const message = data.toString();
+        if (message.includes('error') || message.includes('Error')) {
+            console.error(`Session ${sessionId} FFmpeg Error:`, message);
+        }
+    });
+
+    ffmpegProcess.on('close', (code) => {
+        console.log(`Session ${sessionId} FFmpeg process exited with code ${code}`);
+        if (sessions[sessionId]) {
+            sessions[sessionId].ffmpegProcess = null;
+        } else {
+            console.log(`Session ${sessionId} already removed from sessions.`);
+        }
+    });
+
+    sessions[sessionId].ffmpegProcess = ffmpegProcess;
+
+    console.log(`Audio processing pipeline started for session ${sessionId}.`);
+};
+
+const restartRecognizeStream = (sessionId) => {
+    const session = sessions[sessionId];
+    if (!session) {
+        console.error(`Session ${sessionId} does not exist. Cannot restart stream.`);
+        return;
+    }
+
+    if (session.isRestarting) {
+        console.log(`Session ${sessionId} is already restarting. Skipping duplicate restart.`);
+        return;
+    }
+
+    session.isRestarting = true;
+
+    // Stop the existing stream
+    if (session.recognizeStream) {
+        try {
+            session.recognizeStream.end();
+        } catch (err) {
+            console.error(`Error ending recognizeStream for session ${sessionId}:`, err.message);
+        }
+        session.recognizeStream = null;
+    }
+
+    // Reinitialize the stream
+    initializeRecognizeStream(sessionId);
+
+    // Process buffered audio data
+    if (session.buffer && session.buffer.length > 0) {
+        console.log(`Processing buffered data for session ${sessionId}.`);
+        session.buffer.forEach((bufferedData) => {
+            session.recognizeStream.write(bufferedData);
+        });
+        session.buffer = []; // Clear the buffer
+    }
+
+    session.isRestarting = false;
+};
+
+
+const processAudioData = (sessionId, data) => {
+    const session = sessions[sessionId];
+    if (!session) {
+        console.error(`Session ${sessionId} does not exist or has been removed.`);
+        return;
+    }
+
+    if (session.recognizeStream && session.recognizeStream.destroyed) {
+        console.log(`Session ${sessionId} Speech-to-Text stream expired. Restarting stream.`);
+        restartRecognizeStream(sessionId);
+    }
+
+    if (session.ffmpegProcess) {
+        session.ffmpegProcess.stdin.write(data);
+    } else {
+        console.error(`Session ${sessionId} received raw audio data, but FFmpeg is not running.`);
     }
 };
 
-const stopAudioProcessing = () => {
-    console.log('Stopping audio processing pipeline...');
-    streamingState.isStreaming = false;
-
-    // Stop Google Speech streaming
-    stopGoogleStreaming();
-
-    // Stop FFmpeg
-    if (ffmpegProcess) {
-        ffmpegProcess.stdin.end();
-        ffmpegProcess.kill('SIGKILL');
-        ffmpegProcess = null;
+const stopAudioProcessing = (sessionId) => {
+    if (!sessions[sessionId]) {
+        console.log(`Session ${sessionId} does not exist or is already stopped.`);
+        return;
     }
+
+    const session = sessions[sessionId];
+    if (!session.isStreaming) {
+        console.log(`No active streaming to stop for session ${sessionId}.`);
+        return;
+    }
+
+    console.log(`Stopping audio processing pipeline for session ${sessionId}...`);
+
+    session.isStreaming = false;
+
+    // Stop recognizeStream
+    if (session.recognizeStream) {
+        try {
+            session.recognizeStream.end();
+        } catch (err) {
+            console.error(`Error ending recognizeStream for session ${sessionId}:`, err.message);
+        }
+        session.recognizeStream = null;
+    }
+
+    // Stop FFmpeg process
+    if (session.ffmpegProcess) {
+        try {
+            session.ffmpegProcess.stdin.end();
+            session.ffmpegProcess.kill('SIGKILL');
+        } catch (err) {
+            console.error(`Error stopping FFmpeg process for session ${sessionId}:`, err.message);
+        }
+        session.ffmpegProcess = null;
+    }
+
+    // Clear silence interval
+    if (session.silenceInterval) {
+        clearInterval(session.silenceInterval);
+        session.silenceInterval = null;
+    }
+
+    // Remove session from sessions map
+    delete sessions[sessionId];
+
+    console.log(`Audio processing pipeline stopped for session ${sessionId}.`);
 };
+
 
 module.exports = {
     startAudioProcessing,
     processAudioData,
-    stopGoogleStreaming, // Expose only this for "stop" action
-    stopAudioProcessing, // Expose this for connection closure
+    stopAudioProcessing,
     eventEmitter,
 };

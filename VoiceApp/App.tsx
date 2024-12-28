@@ -1,8 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { initializeSession, clearSessionId } from './src/sessionManager';
-import { WebSocketProvider } from './src/WebSocketManager';
+import { initializeSession, renewSessionId, clearSessionId } from './src/sessionManager';
+import { useWebSocket } from './src/WebSocketManager';
 import GoogleSpeechStream from './src/GoogleSpeechStreamer';
 import TTSService from './src/TTSService';
+import { API_URL } from '@env';
+
+console.log('API URL:', API_URL);
 
 const App: React.FC = () => {
   const [transcript, setTranscript] = useState('');
@@ -20,16 +23,20 @@ const App: React.FC = () => {
     isMuted: () => boolean;
   } | null>(null);
 
+  const { restartSession } = useWebSocket(); // Use restartSession from WebSocketManager
+
   useEffect(() => {
     // Initialize the session
     const id = initializeSession();
     setSessionId(id);
 
+    
     // Fetch the existing system prompt for the session
     const fetchPrompt = async () => {
       if (!sessionId) return;
+      console.log(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}`)
       try {
-        const response = await fetch(`https://e7e2-2a00-23c8-16b2-8301-b4ba-6b2a-34a2-ca6a.ngrok-free.app/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`, {
+        const response = await fetch(`${API_URL}/api/gemini/system-prompt?sessionId=${encodeURIComponent(sessionId)}`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -44,7 +51,6 @@ const App: React.FC = () => {
 
         const data = await response.json();
         setPrompt(data.prompt || '');
-        // }, 1000)
       } catch (error) {
         console.error('Error fetching system prompt:', error);
       }
@@ -53,22 +59,53 @@ const App: React.FC = () => {
     if (id) fetchPrompt();
   }, [sessionId]);
 
-  const handleClearSession = () => {
-    clearSessionId();
-    setSessionId(null);
-    console.log('Session cleared.');
+  const handleClearHistory = async () => {
+    if (!sessionId) {
+        console.error('No active session to clear history.');
+        return;
+    }
+    try {
+        const response = await fetch(`${API_URL}/api/gemini/history?sessionId=${encodeURIComponent(sessionId)}&clear=true`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            },
+        });
+
+        if (!response.ok) {
+            console.error('Failed to clear conversation history.');
+            return;
+        }
+
+        const result = await response.json();
+        console.log(result.message || 'Conversation history cleared.');
+    } catch (error) {
+        console.error('Error clearing conversation history:', error);
+    }
+};
+
+
+  const handleRenewSession = () => {
+    const newSessionId = renewSessionId();
+    setSessionId(newSessionId);
+    console.log('Session renewed with new ID:', newSessionId);
+
+    // Restart WebSocket session
+    restartSession();
   };
 
   const handleAudioStreamReady = (stream: MediaStream | null) => {
     setAudioStream(stream);
   };
+
   const handleReady = useCallback((controls: typeof streamControls.current) => {
     streamControls.current = controls;
   }, []);
 
   const handleTranscript = useCallback((newTranscript: string, isFinal: boolean) => {
-    if (isFinal) {
-      // console.log("Transcript ::", newTranscript);
+    if (isFinal || true) {
+      console.log(newTranscript);
       setTranscript((prev) => `${prev} ${newTranscript}`);
     }
   }, []);
@@ -124,7 +161,7 @@ const App: React.FC = () => {
     }
 
     try {
-      const response = await fetch('https://e7e2-2a00-23c8-16b2-8301-b4ba-6b2a-34a2-ca6a.ngrok-free.app/api/gemini/system-prompt', {
+      const response = await fetch(`${API_URL}/api/gemini/system-prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, newPrompt: prompt }),
@@ -146,11 +183,16 @@ const App: React.FC = () => {
   };
 
   return (
-    <WebSocketProvider>
+    <div>
       <div>
         <h1>Welcome to the Voice App</h1>
         <p>Your session ID: {sessionId || 'No active session'}</p>
-        <button onClick={handleClearSession}>Clear conversation history</button>
+        <button
+          onClick={handleClearHistory}
+          >Clear conversation history</button>
+        <button
+          onClick={handleRenewSession}
+          disabled={isMicOn}>Renew session</button>
         <div>
           <textarea
             value={prompt}
@@ -158,7 +200,9 @@ const App: React.FC = () => {
             placeholder="Enter new system prompt"
             style={{ width: '100%', height: '50px' }}
           />
-          <button onClick={savePrompt}>Save Prompt</button>
+          <button
+            onClick={savePrompt}
+            disabled={isMicOn}>Save instruction prompt</button>
         </div>
         <p>Transcript: {transcript}</p>
         <button onClick={handleStart} disabled={isMicOn}>
@@ -179,7 +223,7 @@ const App: React.FC = () => {
         />
         <TTSService audioStream={audioStream} onReady={handleTTSReady} />
       </div>
-    </WebSocketProvider>
+    </div>
   );
 };
 

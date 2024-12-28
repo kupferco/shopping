@@ -45,3 +45,11 @@ export function initializeSession() {
     }
     return sessionId;
 }
+
+// Renew the session ID and store it
+export function renewSessionId() {
+    const newSessionId = uuidv4();
+    setSessionIdWithExpiration(newSessionId);
+    console.log('Session ID renewed:', newSessionId);
+    return newSessionId;
+}

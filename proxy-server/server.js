@@ -5,22 +5,26 @@ const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
-const { startAudioProcessing,
+const {
+    startAudioProcessing,
     processAudioData,
-    eventEmitter } = require('./services/audioProcessingService');
+    stopAudioProcessing,
+    eventEmitter,
+} = require('./services/audioProcessingService');
 const { handleTTSRequest } = require('./routes/ttsHandler');
 const { startSTTStreaming } = require('./routes/sttHandler');
-const { handleGeminiRequest,
+const {
+    handleGeminiRequest,
     handleGeminiHistoryRequest,
     updateSystemPrompt,
-    handleGetSystemPrompt } = require('./routes/geminiHandler');
+    handleGetSystemPrompt,
+} = require('./routes/geminiHandler');
 
 const { sendAudioMessage } = require('./utils/audioUtils');
 const { fetchTTSResponse } = require('./services/ttsService');
 const { fetchGeminiResponse } = require('./services/geminiService');
 
 const app = express();
-// Check if running in production (Cloud Run) or development (localhost)
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 8080;
 
@@ -36,7 +40,7 @@ if (isProduction) {
     serverEndpoint = process.env.PROXY_SERVER_NGROK;
     clientURL = process.env.CLIENT_DEVELOPMENT_NGROK;
 } else {
-    serverEndpoint = process.env.PROXY_SERVER_DEVELOPMENT
+    serverEndpoint = process.env.PROXY_SERVER_DEVELOPMENT;
     clientURL = process.env.CLIENT_DEVELOPMENT_LOCAL;
     const options = {
         key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
@@ -46,7 +50,6 @@ if (isProduction) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
-// const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const activeSockets = {};
 
@@ -56,15 +59,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => res.send('Hello, World!'));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// Allow all origins for development; restrict in production
-// app.use(cors({
-//     origin: clientURL,
-//     methods: ['GET', 'POST', 'OPTIONS'], // Adjust allowed methods
-//     allowedHeaders: ['Content-Type', 'Authorization'], // Adjust headers as needed
-// }));
 app.use(cors());
-
-
 
 // API Endpoints
 app.post('/api/tts', handleTTSRequest);
@@ -87,86 +82,116 @@ wss.on('connection', (socket) => {
     console.log('Client connected.');
 
     socket.on('message', (message) => {
-        // Convert buffer to string
         const messageString = message.toString();
-
-        // Check if the message is JSON
         if (isJSON(messageString)) {
             try {
                 const parsedMessage = JSON.parse(messageString);
-                console.log('Parsed WebSocket message:', parsedMessage);
+                const { action, sessionId, audioData } = parsedMessage;
 
-                // Handle JSON messages
-                if (parsedMessage.action === 'start_session') {
-                    const { sessionId } = parsedMessage;
-                    if (!sessionId) {
-                        console.error('Session ID is missing. Cannot start session.');
-                        return;
-                    }
-                    console.log(`Session started with ID: ${sessionId}`);
-                    activeSockets[sessionId] = socket; // Map sessionId to the WebSocket connection
+                if (!sessionId) {
+                    console.error('Session ID is missing.');
+                    return;
+                }
 
-                    socket.on('close', () => {
-                        console.log(`Session closed for ID: ${sessionId}`);
-                        delete activeSockets[sessionId]; // Clean up on socket close
-                    });
-                } else if (parsedMessage.action === 'start_stt') {
-                    const { sessionId } = parsedMessage;
-                    if (!sessionId || !activeSockets[sessionId]) {
-                        console.error('Session ID is missing or invalid. Cannot start STT.');
-                        return;
-                    }
-                    console.log(`Start STT action received for session ID: ${sessionId}`);
-                    startAudioProcessing(sessionId);
+                switch (action) {
+                    case 'start_session':
+                        console.log(`Session started with ID: ${sessionId}`);
+                        activeSockets[sessionId] = socket;
+
+                        socket.on('close', () => {
+                            console.log(`Session closed for ID: ${sessionId}`);
+                            delete activeSockets[sessionId];
+                            stopAudioProcessing(sessionId);
+                        });
+                        break;
+
+                    case 'restart_session':
+                        console.log(`Session restarted with ID: ${sessionId}`);
+                        if (activeSockets[sessionId]) {
+                            stopAudioProcessing(sessionId); // Stop existing session
+                        }
+                        activeSockets[sessionId] = socket; // Assign the new session ID
+                        break;
+
+                    case 'start_stt':
+                        if (!activeSockets[sessionId]) {
+                            console.error('Invalid session ID. Cannot start STT.');
+                            return;
+                        }
+                        console.log(`Start STT action received for session ID: ${sessionId}`);
+                        startAudioProcessing(sessionId);
+                        break;
+
+                    case 'stop_stt':
+                        if (!activeSockets[sessionId]) {
+                            console.error('Invalid session ID. Cannot stop STT.');
+                            return;
+                        }
+                        console.log(`Stop STT action received for session ID: ${sessionId}`);
+                        stopAudioProcessing(sessionId);
+                        break;
+
+                    case 'stt_audio':
+                        if (!activeSockets[sessionId]) {
+                            console.error('Invalid session ID. Cannot process audio.');
+                            return;
+                        }
+                        if (!audioData) {
+                            console.error('Audio data is missing.');
+                            return;
+                        }
+                        const binaryAudio = Buffer.from(audioData, 'base64');
+                        processAudioData(sessionId, binaryAudio);
+                        break;
+
+                    default:
+                        console.error(`Unknown action: ${action}`);
                 }
             } catch (error) {
                 console.error('Error processing WebSocket JSON message:', error.message);
             }
         } else {
-            // console.log('Received binary data.');
-            processAudioData(message); // Handle binary data
+            console.error('Received non-JSON message. Ignoring.');
         }
     });
 });
-
-
 
 
 // Listen for transcription events
 eventEmitter.on('transcription', async ({ sessionId, transcript, isFinal }) => {
     const socket = activeSockets[sessionId];
     if (!socket) return;
-
-    // Send transcription to the client
-    socket.send(JSON.stringify({
-        action: 'stt',
-        payload: {
-            transcript,
-            isFinal,
-        },
-    }));
-
-    if (isFinal) {
+    
+    socket.send(
+        JSON.stringify({
+            action: 'stt',
+            payload: {
+                transcript,
+                isFinal,
+            },
+        })
+    );
+    
+    if (isFinal || true) {
         console.log('Final transcript:', transcript);
 
         try {
-            // Call the Gemini service for a response
             const geminiData = await fetchGeminiResponse(sessionId, serverEndpoint, transcript);
 
             if (!geminiData) {
-                console.error('Failed to fetch Gemini response (server).');
+                console.error('Failed to fetch Gemini response.');
                 return;
             }
 
-            // Send the Gemini response back to the client
-            socket.send(JSON.stringify({
-                action: 'gemini',
-                payload: {
-                    agent: geminiData.response,
-                },
-            }));
+            socket.send(
+                JSON.stringify({
+                    action: 'gemini',
+                    payload: {
+                        agent: geminiData.response,
+                    },
+                })
+            );
 
-            // Process the Gemini response with TTS
             const audioBufferResponse = await fetchTTSResponse(serverEndpoint, geminiData.response);
 
             if (audioBufferResponse) {
@@ -182,51 +207,6 @@ eventEmitter.on('transcription', async ({ sessionId, transcript, isFinal }) => {
     }
 });
 
-
-// Helper function to call TTS API
-// async function fetchTTSResponse(text) {
-//     try {
-//         const response = await fetch(`${serverEndpoint}/api/tts`, {
-//             method: 'POST',
-//             headers: { 'Content-Type': 'application/json' },
-//             body: JSON.stringify({ text }),
-//         });
-
-//         if (!response.ok) {
-//             console.error('Failed to fetch TTS response:', response.statusText);
-//             return null;
-//         }
-
-//         // Read the response as an ArrayBuffer
-//         const audioBuffer = await response.arrayBuffer();
-
-//         // Write the buffer to a file for testing
-//         // const outputPath = path.join(__dirname, 'output.mp3');
-//         // fs.writeFileSync(outputPath, Buffer.from(audioBuffer));
-//         // console.log(`Audio saved to ${outputPath}`);
-
-//         // Return the buffer (can be sent to client via WebSocket)
-//         return Buffer.from(audioBuffer);
-//     } catch (error) {
-//         console.error('Error fetching TTS response:', error);
-//         return null;
-//     }
-// }
-
-// Test the function
-// fetchTTSResponse("Hello, Gemini!").then((audioBuffer) => {
-//     if (audioBuffer) {
-//         console.log('TTS audio fetched successfully!');
-//     } else {
-//         console.error('Failed to fetch TTS audio.');
-//     }
-// });
-
-
-
-
-// Start the server
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Proxy server running on port ${serverEndpoint}`);
+    console.log(`Proxy server running on port ${PORT}`);
 });
-
