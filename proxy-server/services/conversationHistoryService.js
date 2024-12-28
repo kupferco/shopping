@@ -12,8 +12,8 @@ function getSystemPrompt(sessionId) {
 }
 
 function setSystemPrompt(sessionId, newPrompt) {
-    clearHistory(sessionId);
     systemPrompts[sessionId] = newPrompt;
+    clearHistory(sessionId);
 
     // Save updates to the JSON file
     // fs.writeFileSync(promptsPath, JSON.stringify(systemPrompts, null, 2));
