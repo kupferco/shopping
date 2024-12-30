@@ -119,6 +119,9 @@ wss.on('connection', (socket) => {
                             return;
                         }
                         console.log(`Start STT action received for session ID: ${sessionId}`);
+
+                        activeSockets[sessionId].mode = parsedMessage.mode || 'default';
+
                         startAudioProcessing(sessionId);
                         break;
 
@@ -161,7 +164,7 @@ wss.on('connection', (socket) => {
 eventEmitter.on('transcription', async ({ sessionId, transcript, isFinal }) => {
     const socket = activeSockets[sessionId];
     if (!socket) return;
-    
+
     socket.send(
         JSON.stringify({
             action: 'stt',
@@ -171,7 +174,11 @@ eventEmitter.on('transcription', async ({ sessionId, transcript, isFinal }) => {
             },
         })
     );
-    
+
+    // Check mode
+    const mode = socket.mode || 'default';
+    if (mode === 'stt_only') return; // Skip Gemini and TTS if in stt_only modeƒ
+
     if (isFinal || true) {
         console.log('Final transcript:', transcript);
 
@@ -195,12 +202,34 @@ eventEmitter.on('transcription', async ({ sessionId, transcript, isFinal }) => {
             const audioBufferResponse = await fetchTTSResponse(serverEndpoint, geminiData.response);
 
             if (audioBufferResponse) {
-                console.log('Sending audio to client...');
-                const combinedBuffer = sendAudioMessage(audioBufferResponse);
-                socket.send(combinedBuffer);
+                console.log('Sending TTS audio to client...');
+
+                // Convert the audio buffer to Base64
+                const audioBase64 = audioBufferResponse.toString('base64');
+
+                // Encapsulate the Base64 audio buffer in JSON
+                const payload = {
+                    action: 'tts_audio',
+                    payload: {
+                        audioData: audioBase64,
+                    },
+                };
+
+                console.log(payload.action)
+                // Send JSON-encapsulated TTS audio to the client
+                socket.send(JSON.stringify(payload));
             } else {
-                console.error('Failed to generate audio.');
+                console.error('Failed to generate TTS audio.');
             }
+
+
+            // if (audioBufferResponse) {
+            //     console.log('Sending audio to client...');
+            //     const combinedBuffer = sendAudioMessage(audioBufferResponse);
+            //     socket.send(combinedBuffer);
+            // } else {
+            //     console.error('Failed to generate audio.');
+            // }
         } catch (error) {
             console.error('Error in transcription event:', error);
         }

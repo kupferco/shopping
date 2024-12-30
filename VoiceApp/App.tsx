@@ -38,7 +38,7 @@ const App: React.FC = () => {
 
     try {
       const history = await fetchHistory(sessionId);
-      console.log("Fetched conversation history:", history);
+      // console.log("Fetched conversation history:", history);
       setConversationHistory(history);
     } catch (error) {
       console.error("Error fetching conversation history:", error);
@@ -89,8 +89,8 @@ const App: React.FC = () => {
 
   const handleTranscript = useCallback(
     async (newTranscript: string, isFinal: boolean) => {
-      console.log("handleTranscript triggered");
-      console.log("Session ID:", sessionId);
+      // console.log("handleTranscript triggered");
+      // console.log("Session ID:", sessionId);
 
       if (!sessionId) {
         console.warn("Session ID is missing, skipping handleTranscript.");

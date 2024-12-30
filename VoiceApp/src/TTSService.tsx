@@ -35,11 +35,11 @@ const TTSService: React.FC<{
                 initAudioContext(); // Try to initialize again
                 return; // Skip playback until initialized
             }
-        
+
             try {
                 const arrayBuffer = await audioBlob.arrayBuffer();
                 const decodedData = await audioContextRef.current.decodeAudioData(arrayBuffer);
-        
+
                 // Stop any current playback before starting a new one
                 if (sourceNodeRef.current) {
                     console.log('Stopping current playback before starting new audio.');
@@ -50,15 +50,15 @@ const TTSService: React.FC<{
                     console.log('No sourceNodeRef.current', sourceNodeRef.current);
 
                 }
-        
+
                 const source = audioContextRef.current.createBufferSource();
                 source.buffer = decodedData;
                 source.connect(audioContextRef.current.destination);
                 source.start(0);
-        
+
                 console.log('Audio playback started.');
                 sourceNodeRef.current = source;
-        
+
                 source.onended = () => {
                     console.log('Audio playback ended.');
                     // sourceNodeRef.current = null;
@@ -67,7 +67,7 @@ const TTSService: React.FC<{
                 console.error('Audio playback error:', err);
             }
         };
-        
+
 
         // Expose stop method
         const stop = () => {
@@ -84,40 +84,34 @@ const TTSService: React.FC<{
         }
 
         // Register the handler for TTS audio
-        registerHandler('tts_audio', async (blob: Blob) => {
+        registerHandler('tts_audio', async (payload: { audioData: string }) => {
             if (!audioContextRef.current) {
                 console.error('AudioContext is not initialized.');
                 return;
             }
-
-            // Convert Blob to ArrayBuffer
-            const arrayBuffer = await blob.arrayBuffer();
-            const combinedBuffer = new Uint8Array(arrayBuffer);
-
-            // Find the separator (newline character)
-            const separatorIndex = combinedBuffer.indexOf(10); // ASCII code for '\n'
-            if (separatorIndex === -1) {
-                console.error('Invalid message format: Separator not found.');
-                return;
-            }
-
-            // Extract metadata and audio buffer
-            const metadataBuffer = combinedBuffer.slice(0, separatorIndex);
-            const audioBuffer = combinedBuffer.slice(separatorIndex + 1);
-
+        
             try {
-                const metadata = JSON.parse(new TextDecoder().decode(metadataBuffer));
-                if (metadata.action === 'tts_audio') {
+                // Validate audio data
+                if (payload?.audioData) {
+                    // Decode Base64 audio data into a binary buffer
+                    const audioBuffer = Uint8Array.from(
+                        atob(payload.audioData),
+                        (char) => char.charCodeAt(0)
+                    );
+        
+                    // Create a Blob from the decoded audio buffer
                     const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+        
+                    // Play the audio using your existing playAudio function
                     await playAudio(audioBlob);
                 } else {
-                    console.warn('Unknown action:', metadata.action);
+                    console.warn('Missing audio data in payload:', payload);
                 }
             } catch (err) {
-                console.error('Error parsing metadata:', err);
+                console.error('Error processing TTS audio payload:', err);
             }
         });
-
+        
         // Ensure AudioContext is initialized with a user interaction
         document.body.addEventListener('click', initAudioContext);
 

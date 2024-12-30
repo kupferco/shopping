@@ -32,11 +32,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         };
 
         wsRef.current.onmessage = async (event) => {
-            if (event.data instanceof Blob) {
-                if (handlersRef.current['tts_audio']) {
-                    handlersRef.current['tts_audio'](event.data);
-                }
-            } else if (typeof event.data === 'string') {
+            if (typeof event.data === 'string') {
                 try {
                     const { action, payload } = JSON.parse(event.data);
                     if (handlersRef.current[action]) {
@@ -45,7 +41,23 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 } catch (err) {
                     console.error('Error parsing WebSocket message:', err);
                 }
+            } else {
+                console.error('Websocket message needs to be sent as json string');
             }
+            // if (event.data instanceof Blob) {
+            //     if (handlersRef.current['tts_audio']) {
+            //         handlersRef.current['tts_audio'](event.data);
+            //     }
+            // } else if (typeof event.data === 'string') {
+            //     try {
+            //         const { action, payload } = JSON.parse(event.data);
+            //         if (handlersRef.current[action]) {
+            //             handlersRef.current[action](payload);
+            //         }
+            //     } catch (err) {
+            //         console.error('Error parsing WebSocket message:', err);
+            //     }
+            // }
         };
 
         wsRef.current.onerror = (error) => console.error('WebSocket error:', error);

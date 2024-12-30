@@ -44,6 +44,31 @@ The server maintains a conversation history for each session, which includes exc
 
 > **Note:** All API requests must include a valid `sessionId` parameter to identify the session.
 
+
+### WebSocket Communication
+
+The server supports WebSocket-based communication for real-time processing of audio data. Clients can initiate, stop, and manage sessions using specific actions.
+
+#### Supported Actions
+- **`start_session`**: Initializes a new session and assigns it to the client.
+- **`restart_session`**: Restarts an existing session, clearing previous data.
+- **`start_stt`**: Begins processing audio for speech-to-text conversion.
+
+#### New Feature: Mode Flag for `start_stt`
+- Clients can include an optional `mode` parameter with the `start_stt` action.
+- **Available Modes**:
+  - **`stt_only`**: Only perform speech-to-text processing. The server will not forward the transcript to Gemini or initiate TTS responses.
+  - **Default Behavior**: Without the `stt_only` flag, the server processes the transcript, sends it to Gemini, and returns both text and TTS audio.
+
+#### Example WebSocket Messages
+**Start STT with Default Mode:**
+```json
+{
+  "action": "start_stt",
+  "sessionId": "example-session-id"
+}
+
+
 ---
 
 ## Deployment and Local Testing
