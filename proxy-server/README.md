@@ -67,7 +67,7 @@ The server supports WebSocket-based communication for real-time processing of au
   "action": "start_stt",
   "sessionId": "example-session-id"
 }
-
+```
 
 ---
 
