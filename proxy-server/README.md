@@ -110,10 +110,11 @@ The server supports WebSocket-based communication for real-time processing of au
 4. **Environment Variables**:
     Ensure `.env` is configured with:
     ```
-    API_KEY=<Your Google API Key>
+    GOOGLE_API_KEY=<Your Google API Key>
     NODE_ENV=development
     USE_MOCK_GEMINI=true
     ```
+    > **Note:** The `.env` file is used for local development and is ignored by Git. For production, secrets like `GOOGLE_API_KEY` are securely managed using **Google Cloud Secret Manager**.
 
 ### Docker Deployment
 
@@ -134,7 +135,8 @@ The server supports WebSocket-based communication for real-time processing of au
         --platform=managed \
         --region=europe-west2 \
         --allow-unauthenticated \
-        --set-env-vars NODE_ENV=production
+        --set-env-vars NODE_ENV=production \
+        --set-secrets GOOGLE_API_KEY=google-api-key:latest
     ```
 
 ---
@@ -165,14 +167,3 @@ The server supports WebSocket-based communication for real-time processing of au
   Verify `.env` files are correctly updated.
 - **WebSocket Issues**:
   Check the `API_URL` in the client matches the proxy server address.
-
----
-
-## Contribution Guidelines
-
-Feel free to contribute by submitting pull requests for bug fixes or enhancements. Ensure code adheres to the existing style and includes relevant documentation updates.
-
----
-
-This README reflects the current state of the proxy server and its services. For additional details or questions, contact the project maintainers.
-
