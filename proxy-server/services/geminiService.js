@@ -10,6 +10,7 @@ const fetchGeminiResponse = async (sessionId, serverEndpoint, text) => {
         
         if (!response.ok) {
             console.error('Failed to fetch Gemini response (service):', response.statusText);
+            console.error('ServerEdnpoint', serverEndpoint);
             return null;
         }
 
