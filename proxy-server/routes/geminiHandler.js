@@ -92,6 +92,7 @@ async function handleGeminiRequest(req, res) {
             const data = await response.json();
             const aiResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No valid response from Gemini API.';
 
+            console.log('Gemini response (geminiHandler):', aiResponse);
             // Add AI response to conversation history
             addMessage(sessionId, { role: 'assistant', text: aiResponse });
 

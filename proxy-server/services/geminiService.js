@@ -15,6 +15,9 @@ const fetchGeminiResponse = async (sessionId, serverEndpoint, text) => {
         }
 
         const jsonResponse = await response.json();
+
+        console.log("Gemini response (service):", jsonResponse);
+
         return jsonResponse;
     } catch (error) {
         console.error('Error fetching Gemini response:', error);

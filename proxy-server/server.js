@@ -190,6 +190,8 @@ eventEmitter.on('transcription', async ({ sessionId, transcript, isFinal }) => {
                 return;
             }
 
+            console.log("Gemini response (server):", geminiData.response);
+
             socket.send(
                 JSON.stringify({
                     action: 'gemini',
