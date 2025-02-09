@@ -9,6 +9,7 @@ const path = require('path');
 // Import handlers and services
 const db = require('./db');
 const priceTrackerHandler = require('./routes/priceTrackerHandler');
+const { setupPriceTagRoutes } = require('./routes/priceTagOcrHandler');
 const {
     startAudioProcessing,
     processAudioData,
@@ -88,6 +89,7 @@ app.get('/api/voice/gemini/history', handleGeminiHistoryRequest);
 
 // Price tracking endpoints
 app.use('/api/price-tracker', priceTrackerHandler);
+setupPriceTagRoutes(app);
 
 // WebSocket connection handling
 wss.on('connection', (socket) => {

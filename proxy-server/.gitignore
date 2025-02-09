@@ -3,3 +3,4 @@ key.pem
 cert.pem
 .env
 .DS_Store
+config
