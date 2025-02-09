@@ -5,6 +5,10 @@ const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+
+// Import handlers and services
+const db = require('./db');
+const priceTrackerHandler = require('./routes/priceTrackerHandler');
 const {
     startAudioProcessing,
     processAudioData,
@@ -28,6 +32,7 @@ const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 8080;
 
+// Server setup
 let serverEndpoint;
 let server;
 let clientURL;
@@ -50,24 +55,9 @@ if (isProduction) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
+// WebSocket setup
 const wss = new WebSocket.Server({ server });
 const activeSockets = {};
-
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.get('/', (req, res) => res.send('Hello, World!'));
-app.get('/health', (req, res) => res.status(200).send('OK'));
-
-app.use(cors());
-
-// API Endpoints
-app.post('/api/tts', handleTTSRequest);
-app.post('/api/stt', startSTTStreaming);
-app.post('/api/gemini', handleGeminiRequest);
-app.post('/api/gemini/system-prompt', updateSystemPrompt);
-app.get('/api/gemini/system-prompt', handleGetSystemPrompt);
-app.get('/api/gemini/history', handleGeminiHistoryRequest);
 
 const isJSON = (message) => {
     try {
@@ -78,6 +68,28 @@ const isJSON = (message) => {
     }
 };
 
+
+// Middleware
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(cors());
+
+// Basic endpoints
+app.get('/', (req, res) => res.send('Hello, World!'));
+app.get('/health', (req, res) => res.status(200).send('OK'));
+
+// Voice UI related endpoints
+app.post('/api/voice/tts', handleTTSRequest);
+app.post('/api/voice/stt', startSTTStreaming);
+app.post('/api/voice/gemini', handleGeminiRequest);
+app.post('/api/voice/gemini/system-prompt', updateSystemPrompt);
+app.get('/api/voice/gemini/system-prompt', handleGetSystemPrompt);
+app.get('/api/voice/gemini/history', handleGeminiHistoryRequest);
+
+// Price tracking endpoints
+app.use('/api/price-tracker', priceTrackerHandler);
+
+// WebSocket connection handling
 wss.on('connection', (socket) => {
     console.log('Client connected.');
 
@@ -237,6 +249,18 @@ eventEmitter.on('transcription', async ({ sessionId, transcript, isFinal }) => {
         }
     }
 });
+
+
+// Test database connection
+db.testConnection()
+    .then(connected => {
+        if (connected) {
+            console.log('Database connection successful');
+        } else {
+            console.error('Failed to connect to database');
+        }
+    });
+
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Proxy server running on port ${PORT}`);
