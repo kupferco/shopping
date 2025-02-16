@@ -1,20 +1,29 @@
-require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 const vision = require('@google-cloud/vision');
 const db = require('../db');
-const path = require('path');
 
 // Initialize Vision client with secure credentials
 const client = new vision.ImageAnnotatorClient({
     keyFilename: path.resolve(__dirname, '..', process.env.GOOGLE_APPLICATION_CREDENTIALS)
 });
 
-// Utility functions for text extraction (keep previous implementation)
+// Utility functions for text extraction
 function extractProductDetails(text) {
-    // ... (previous implementation remains the same)
+    // Placeholder implementation - you'll want to replace with your actual logic
+    const nameMatch = text.match(/(?:product|item)\s*:?\s*(.+)/i);
+    const brandMatch = text.match(/(?:brand|make)\s*:?\s*(.+)/i);
+
+    return {
+        name: nameMatch ? nameMatch[1].trim() : 'Unknown Product',
+        brand: brandMatch ? brandMatch[1].trim() : 'Unknown Brand'
+    };
 }
 
 function extractPriceFromText(text) {
-    // ... (previous implementation remains the same)
+    // Placeholder implementation - you'll want to replace with your actual logic
+    const priceMatch = text.match(/\$?\s*(\d+(?:\.\d{1,2})?)/);
+    return priceMatch ? parseFloat(priceMatch[1]) : null;
 }
 
 exports.handlePriceTagOCR = async (req, res) => {
@@ -28,93 +37,51 @@ exports.handlePriceTagOCR = async (req, res) => {
 
         const imageBuffer = Buffer.from(imageBase64, 'base64');
 
-        // Perform OCR with enhanced request
-        const [result] = await client.textDetection({
-            image: { content: imageBuffer },
-            imageContext: {
-                // Optional: Add language hints or specific region hints
-                languageHints: ['en-US']
-            }
-        });
+        // Generate a unique filename
+        const filename = `price_tag_${Date.now()}.jpg`;
+        const uploadPath = path.join(__dirname, '..', 'uploads', filename);
 
-        // Extract text annotations
-        const detections = result.textAnnotations;
-        
-        // Handle no text found scenario
-        if (!detections || detections.length === 0) {
-            return res.status(400).json({ 
-                error: 'No text could be detected in the image' 
-            });
+        // Ensure uploads directory exists
+        const uploadsDir = path.join(__dirname, '..', 'uploads');
+        if (!fs.existsSync(uploadsDir)){
+            fs.mkdirSync(uploadsDir, { recursive: true });
         }
 
-        const fullTextDetection = detections[0].description;
+        // Save image to file system
+        fs.writeFileSync(uploadPath, imageBuffer);
 
-        // Extract price and product details
-        const price = extractPriceFromText(fullTextDetection);
-        const productDetails = extractProductDetails(fullTextDetection);
-
-        // Logging for debugging
-        console.log('Extracted Details:', {
-            price,
-            productName: productDetails.name,
-            brand: productDetails.brand
-        });
-
-        // Existing product lookup and creation logic
-        const existingProductQuery = await db.query(
-            `SELECT product_id, name, brand, barcode 
-             FROM products 
-             WHERE LOWER(name) = LOWER($1) 
-             OR LOWER(brand) = LOWER($2)`,
-            [productDetails.name, productDetails.brand]
-        );
-
-        let productId;
-        if (existingProductQuery.rows.length > 0) {
-            // Product exists - use existing product
-            const existingProduct = existingProductQuery.rows[0];
-            productId = existingProduct.product_id;
-        } else {
-            // Create new product
-            const newProductResult = await db.query(
-                `INSERT INTO products 
-                 (name, brand, cat2_id) 
-                 VALUES (
-                     $1, 
-                     $2, 
-                     (SELECT cat2_id FROM categories_level2 LIMIT 1)
-                 ) 
-                 RETURNING product_id`,
-                [productDetails.name, productDetails.brand]
-            );
-            productId = newProductResult.rows[0].product_id;
-        }
-
-        // Insert price tag
-        await db.query(
+        // Insert price tag with image path
+        const priceTagResult = await db.query(
             `INSERT INTO price_tags 
-            (product_id, store_id, price, image_url) 
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT DO NOTHING`,
-            [productId, storeId, price, imageBase64.slice(0, 255)]
+            (store_id, image_url, price, original_price) 
+            VALUES ($1, $2, 0, NULL)
+            RETURNING *`,
+            [storeId, `/uploads/${filename}`]
         );
 
         res.json({
             success: true,
-            action: existingProductQuery.rows.length > 0 ? 'updated' : 'created',
-            productName: productDetails.name,
-            brand: productDetails.brand,
-            price: price
+            message: 'Image uploaded successfully',
+            imageUrl: `/uploads/${filename}`
         });
     } catch (error) {
-        console.error('Detailed OCR Error:', error);
+        console.error('Image Upload Error:', error);
         res.status(500).json({ 
-            error: 'Failed to process price tag', 
-            details: error.message,
-            stack: error.stack
+            error: 'Failed to upload image', 
+            details: error.message
         });
     }
 };
+
+// Placeholder function for Gemini enhancement
+async function enhanceProductDetailsWithGemini(context) {
+    // TODO: Implement actual Gemini API call
+    return {
+        name: context.initialProductName,
+        brand: context.initialProductBrand,
+        // Add more enhanced details as needed
+    };
+}
 
 exports.setupPriceTagRoutes = (app) => {
     app.post('/api/price-tag/ocr', exports.handlePriceTagOCR);
