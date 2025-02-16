@@ -13,28 +13,23 @@ router.post('/ocr', async (req, res) => {
     try {
         const { imageBase64, storeId } = req.body;
 
-        // Upload image
-        let uploadResult;
-        let loadedImage;
-        if (!HARDCODED_DEV) {
-            uploadResult = await ImageUploadService.uploadImage(imageBase64, storeId);
-            console.log('uploadResult ::', uploadResult.success);
+        // Convert base64 to buffer directly
+        let loadedImage = Buffer.from(
+            imageBase64.includes(',')
+                ? imageBase64.split(',')[1]
+                : imageBase64,
+            'base64'
+        );
 
-            // get image
-            console.log(uploadResult.imageUrl)
-            loadedImage = fs.readFileSync(
-                path.join(__dirname, '..', uploadResult.imageUrl)
-            );
-        } else {
-            uploadResult = {
-                success: 55
-            }
-
-            // Prepare image for OCR
+        let uploadResult = {};
+        if (HARDCODED_DEV) {
+            // Use local static image for OCR
             const imagePath = path.resolve(__dirname, '..', 'uploads', 'price_tag_1739703168965.jpg');
-            uploadResult.imageUrl = imagePath;
-
-            console.log('Image Path:', imagePath); // Log the path to verify
+            uploadResult = {
+                success: 'image not uploaded or written to DB',
+                imageUrl: imagePath
+            }
+            console.log('Local image Path:', imagePath); // Log the path to verify
 
             // Check if file exists before reading
             if (!fs.existsSync(imagePath)) {
@@ -46,18 +41,24 @@ router.post('/ocr', async (req, res) => {
 
             // Read the image file as a buffer
             loadedImage = fs.readFileSync(imagePath);
+
         }
 
         // Create OCR service instance
         const ocrService = new OCRService();
-
         // Perform OCR analysis
         const ocrResult = await ocrService.analyzeImage(loadedImage);
 
+        // Optional: Upload image if needed
+        if (!HARDCODED_DEV) {
+            uploadResult = await ImageUploadService.uploadImage(imageBase64, storeId);
+            console.log('uploadResult ::', uploadResult.success);
+        }
+
         res.json({
             success: true,
-            imagePath: uploadResult.imageUrl,
-            ocrResult: ocrResult
+            ocrResult: ocrResult,
+            uploadResult: uploadResult
         });
 
     } catch (error) {
@@ -68,5 +69,7 @@ router.post('/ocr', async (req, res) => {
         });
     }
 });
+
+
 
 module.exports = router;
