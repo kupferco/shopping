@@ -35,6 +35,8 @@ const PriceTagCapture: React.FC = () => {
         }
       });
   
+      console.log('Upload Response:', response.data);
+      
       // Rest of the code remains the same...
     } catch (error) {
       if (axios.isAxiosError(error)) {

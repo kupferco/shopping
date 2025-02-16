@@ -8,14 +8,14 @@ const path = require('path');
 
 // Import handlers and services
 const db = require('./db');
-const priceTrackerHandler = require('./routes/priceTrackerHandler');
-const { setupPriceTagRoutes } = require('./routes/priceTagOcrHandler');
+const priceTagHandler = require('./routes/priceTagHandler');
+// const { setupPriceTagRoutes } = require('./routes/priceTagOcrHandler');
 const {
     startAudioProcessing,
     processAudioData,
     stopAudioProcessing,
     eventEmitter,
-} = require('./services/audioProcessingService');
+} = require('./services/conversation/audioProcessingService');
 const { handleTTSRequest } = require('./routes/ttsHandler');
 const { startSTTStreaming } = require('./routes/sttHandler');
 const {
@@ -26,8 +26,8 @@ const {
 } = require('./routes/geminiHandler');
 
 const { sendAudioMessage } = require('./utils/audioUtils');
-const { fetchTTSResponse } = require('./services/ttsService');
-const { fetchGeminiResponse } = require('./services/geminiService');
+const { fetchTTSResponse } = require('./services/conversation/ttsService');
+const { fetchGeminiResponse } = require('./services/conversation/geminiService');
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
@@ -88,8 +88,8 @@ app.get('/api/voice/gemini/system-prompt', handleGetSystemPrompt);
 app.get('/api/voice/gemini/history', handleGeminiHistoryRequest);
 
 // Price tracking endpoints
-app.use('/api/price-tracker', priceTrackerHandler);
-setupPriceTagRoutes(app);
+app.use('/api/price-tag', priceTagHandler);
+// setupPriceTagRoutes(app);
 
 // WebSocket connection handling
 wss.on('connection', (socket) => {

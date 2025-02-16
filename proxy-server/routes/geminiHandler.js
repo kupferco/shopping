@@ -1,5 +1,5 @@
-const { getHistory, addMessage, clearHistory } = require('../services/conversationHistoryService');
-const { getSystemPrompt, setSystemPrompt } = require('../services/conversationHistoryService');
+const { getHistory, addMessage, clearHistory } = require('../services/conversation/conversationHistoryService');
+const { getSystemPrompt, setSystemPrompt } = require('../services/conversation/conversationHistoryService');
 
 async function handleGetSystemPrompt(req, res) {
     const { sessionId } = req.query;
