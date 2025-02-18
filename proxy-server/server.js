@@ -252,6 +252,26 @@ eventEmitter.on('transcription', async ({ sessionId, transcript, isFinal }) => {
     }
 });
 
+app.post('/api/test-gemini', async (req, res) => {
+    try {
+        const testRequest = {
+            body: {
+                sessionId: 'test-session',
+                inputText: "Respond with 'Gemini is working!' if you receive this message."
+            }
+        };
+        
+        // Use the existing handler
+        await handleGeminiRequest(testRequest, res);
+        
+    } catch (error) {
+        console.error('Gemini Test Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
 
 // Test database connection
 db.testConnection()

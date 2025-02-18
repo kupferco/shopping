@@ -74,9 +74,11 @@ async function handleGeminiRequest(req, res) {
                     },
                 ],
             };
-
+            // In handleGeminiRequest, add this before the fetch:
+            console.log('Payload:', JSON.stringify(payload, null, 2));
+            console.log('API URL:', `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY.substring(0, 5)}...`);
             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+                `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${process.env.GOOGLE_API_KEY}`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

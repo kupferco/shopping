@@ -6,10 +6,17 @@ const fs = require('fs');
 const path = require('path');
 
 const HARDCODED_DEV = true;
+const TEST_IMAGES = [
+    'price_tag_1739703168965.jpg',
+    'IMG_4019.JPG',
+    'IMG_4026.JPG',
+    'IMG_20201107_165202.jpg'
+];
+const TEST_IMAGE_INDEX = 1;
 
 router.post('/ocr', async (req, res) => {
     console.log('Start OCR process');
-    console.log('First step: upload and save image');
+    console.log('First step: ocr the image');
     try {
         const { imageBase64, storeId } = req.body;
 
@@ -24,7 +31,7 @@ router.post('/ocr', async (req, res) => {
         let uploadResult = {};
         if (HARDCODED_DEV) {
             // Use local static image for OCR
-            const imagePath = path.resolve(__dirname, '..', 'uploads', 'price_tag_1739703168965.jpg');
+            const imagePath = path.resolve(__dirname, '..', 'uploads', 'dev_images', TEST_IMAGES[TEST_IMAGE_INDEX]);
             uploadResult = {
                 success: 'image not uploaded or written to DB',
                 imageUrl: imagePath
@@ -51,10 +58,12 @@ router.post('/ocr', async (req, res) => {
 
         // Optional: Upload image if needed
         if (!HARDCODED_DEV) {
+            console.log('Second step: save image in folder and table');
             uploadResult = await ImageUploadService.uploadImage(imageBase64, storeId);
             console.log('uploadResult ::', uploadResult.success);
         }
-
+        
+        console.log('Done image processing!!!');
         res.json({
             success: true,
             ocrResult: ocrResult,
